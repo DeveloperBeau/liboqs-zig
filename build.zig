@@ -1,4 +1,44 @@
 const std = @import("std");
+const manifest = @import("build/manifest.zig");
+
+// Single source of truth for which liboqs families are compiled and exposed.
+// The same list scopes include/oqs/oqsconfig.h via tools/gen-manifest.sh.
+// @embedFile (not a configure-time read) so editing the txt forces a rebuild.
+const enabled_families = parseFamilies(@embedFile("build/enabled-families.txt"));
+
+/// Parse the enabled-families manifest at comptime: one family per line,
+/// trimmed, skipping blank lines and `#` comments.
+fn parseFamilies(comptime raw: []const u8) []const []const u8 {
+    @setEvalBranchQuota(10000);
+    comptime {
+        var families: []const []const u8 = &.{};
+        var it = std.mem.tokenizeScalar(u8, raw, '\n');
+        while (it.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, " \t\r");
+            if (trimmed.len == 0 or trimmed[0] == '#') continue;
+            families = families ++ .{trimmed};
+        }
+        return families;
+    }
+}
+
+/// Look up a family's kind ("kem"/"sig") from the manifest. Panics if the
+/// family has no manifest entry (i.e. enabled-families.txt names something the
+/// generator does not know about).
+fn familyKind(comptime family: []const u8) []const u8 {
+    comptime {
+        @setEvalBranchQuota(10000);
+        for (manifest.algorithms) |entry| {
+            if (std.mem.eql(u8, entry.family, family)) {
+                return switch (entry.kind) {
+                    .kem => "kem",
+                    .sig => "sig",
+                };
+            }
+        }
+        @compileError("enabled-families.txt names '" ++ family ++ "' which has no entry in build/manifest.zig");
+    }
+}
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -19,31 +59,82 @@ pub fn build(b: *std.Build) void {
         .root_module = cliboqs_mod,
     });
 
-    // Root for all relative C source paths below.
-    const vendor_src = b.path("vendor/liboqs/src");
+    // liboqs C source comes from a hash-pinned dependency (build.zig.zon),
+    // fetched by `zig fetch`. The tarball unpacks to a tree whose source
+    // root is `src/` (same relative layout as the old vendored slice).
+    const liboqs = b.dependency("liboqs", .{});
 
-    // Library-global include paths (order matters: pqclean_shims must
-    // resolve before the internal sha2/sha3 headers).
-    const include_dirs = [_][]const u8{
-        "vendor/liboqs/include",
-        "vendor/liboqs/src",
-        "vendor/liboqs/src/common",
-        "vendor/liboqs/src/common/pqclean_shims",
-        "vendor/liboqs/src/common/aes",
-        "vendor/liboqs/src/common/sha2",
-        "vendor/liboqs/src/common/sha3",
-        "vendor/liboqs/src/common/sha3/xkcp_low/KeccakP-1600/plain-64bits",
-        "vendor/liboqs/src/common/sha3/xkcp_low/KeccakP-1600times4/serial",
-        "vendor/liboqs/src/common/rand",
+    // Root for all relative C source paths below.
+    const vendor_src = liboqs.path("src");
+
+    // Assemble the public `oqs/` umbrella include directory at build time:
+    // copy each required upstream header to `oqs/<basename>`, plus our
+    // in-repo (hand-maintained) oqsconfig.h. The result is a generated
+    // LazyPath consumed as an include dir by every group below.
+    const hdrs = b.addWriteFiles();
+    _ = hdrs.addCopyFile(b.path("include/oqs/oqsconfig.h"), "oqs/oqsconfig.h");
+    const umbrella_headers = [_]struct { []const u8, []const u8 }{
+        .{ "src/oqs.h", "oqs/oqs.h" },
+        .{ "src/common/common.h", "oqs/common.h" },
+        .{ "src/common/rand/rand.h", "oqs/rand.h" },
+        .{ "src/common/rand/rand_nist.h", "oqs/rand_nist.h" },
+        .{ "src/common/aes/aes_ops.h", "oqs/aes_ops.h" },
+        .{ "src/common/aes/aes.h", "oqs/aes.h" },
+        .{ "src/common/sha2/sha2_ops.h", "oqs/sha2_ops.h" },
+        .{ "src/common/sha2/sha2.h", "oqs/sha2.h" },
+        .{ "src/common/sha3/sha3_ops.h", "oqs/sha3_ops.h" },
+        .{ "src/common/sha3/sha3.h", "oqs/sha3.h" },
+        .{ "src/common/sha3/sha3x4_ops.h", "oqs/sha3x4_ops.h" },
+        .{ "src/common/sha3/sha3x4.h", "oqs/sha3x4.h" },
+        .{ "src/kem/kem.h", "oqs/kem.h" },
+        .{ "src/sig/sig.h", "oqs/sig.h" },
+        .{ "src/sig_stfl/sig_stfl.h", "oqs/sig_stfl.h" },
+        .{ "src/sig_stfl/xmss/sig_stfl_xmss.h", "oqs/sig_stfl_xmss.h" },
+        .{ "src/sig_stfl/lms/sig_stfl_lms.h", "oqs/sig_stfl_lms.h" },
     };
-    for (include_dirs) |dir| {
-        cliboqs_mod.addIncludePath(b.path(dir));
+    for (umbrella_headers) |h| {
+        _ = hdrs.addCopyFile(liboqs.path(h[0]), h[1]);
     }
 
-    // Base flags applied to every group.
+    // Per-family umbrella headers, derived from enabled_families. Each family's
+    // umbrella is oqs/<kind>_<family>.h (kem_<f>.h for KEMs, sig_<f>.h for SIGs);
+    // its kind comes from the manifest. kem.h/sig.h #include these under the
+    // family-level OQS_ENABLE_* guards, so the enabled set must match oqsconfig.h.
+    inline for (enabled_families) |fam| {
+        const sub = comptime familyKind(fam); // "kem" or "sig"
+        const rel = b.fmt("src/{s}/{s}/{s}_{s}.h", .{ sub, fam, sub, fam });
+        const dst = b.fmt("oqs/{s}_{s}.h", .{ sub, fam });
+        _ = hdrs.addCopyFile(liboqs.path(rel), dst);
+    }
+    const oqs_include = hdrs.getDirectory();
+
+    // Library-global include paths (order matters: pqclean_shims must
+    // resolve before the internal sha2/sha3 headers). The assembled
+    // umbrella dir replaces the old vendored `include/`.
+    cliboqs_mod.addIncludePath(oqs_include);
+    const include_dirs = [_][]const u8{
+        "src",
+        "src/common",
+        "src/common/pqclean_shims",
+        "src/common/aes",
+        "src/common/sha2",
+        "src/common/sha3",
+        "src/common/sha3/xkcp_low/KeccakP-1600/plain-64bits",
+        "src/common/sha3/xkcp_low/KeccakP-1600times4/serial",
+        "src/common/rand",
+    };
+    for (include_dirs) |dir| {
+        cliboqs_mod.addIncludePath(liboqs.path(dir));
+    }
+
+    // Base flags applied to every cliboqs C group.
+    // -fno-sanitize=alignment is library-wide: several PQClean impls do
+    // unaligned casts (e.g. uchar[] -> uint64_t* for GF arithmetic), safe on
+    // little-endian targets that tolerate unaligned loads but flagged by UBSan.
     const base_flags = [_][]const u8{
         "-std=c11",
         "-DOQS_DIST_BUILD=1",
+        "-fno-sanitize=alignment",
     };
 
     // --- common (portable, OpenSSL OFF) + dispatchers -----------------
@@ -79,78 +170,42 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // --- ML-KEM-768 ---------------------------------------------------
-    // MLK_CONFIG_FILE expands inside a #include directive, so it must
-    // carry literal embedded quotes. The path is relative to the
-    // including file (mlkem/src/params.h), independent of CWD.
-    const mlkem_flags = base_flags ++ [_][]const u8{
-        "-DMLK_CONFIG_PARAMETER_SET=768",
-        "-DMLK_CONFIG_FILE=\"../../integration/liboqs/config_c.h\"",
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/kem/ml_kem/mlkem-native_ml-kem-768_ref")}),
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/common/pqclean_shims")}),
-    };
-    cliboqs_mod.addCSourceFiles(.{
-        .root = vendor_src,
-        .flags = &mlkem_flags,
-        .files = &.{
-            "kem/ml_kem/kem_ml_kem_768.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/compress.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/debug.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/indcpa.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/kem.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/poly.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/poly_k.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/sampling.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/verify.c",
-        },
-    });
+    // --- per-algorithm groups, driven by build/manifest.zig -----------
+    // Each manifest entry whose family is enabled becomes one
+    // addCSourceFiles group. Families come online incrementally via this
+    // enable list. Enabling a family compiles ALL its variants (this is how
+    // upstream builds; PQClean/mlkem-native namespace per-variant so there
+    // are no symbol clashes).
+    const is_macos = target.result.os.tag == .macos;
 
-    // --- ML-DSA-65 ----------------------------------------------------
-    const mldsa_flags = base_flags ++ [_][]const u8{
-        "-DDILITHIUM_MODE=3",
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref")}),
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/common/pqclean_shims")}),
-    };
-    cliboqs_mod.addCSourceFiles(.{
-        .root = vendor_src,
-        .flags = &mldsa_flags,
-        .files = &.{
-            "sig/ml_dsa/sig_ml_dsa_65.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/ntt.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/packing.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/poly.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/polyvec.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/reduce.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/rounding.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/sign.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/symmetric-shake.c",
-        },
-    });
+    for (manifest.algorithms) |entry| {
+        var enabled = false;
+        for (enabled_families) |fam| {
+            if (std.mem.eql(u8, fam, entry.family)) {
+                enabled = true;
+                break;
+            }
+        }
+        if (!enabled) continue;
 
-    // --- MAYO-2 -------------------------------------------------------
-    // -fno-sanitize=alignment: the MAYO-2 opt implementation casts an
-    // unsigned char[] stack buffer to uint64_t* for SIMD-style GF(16)
-    // arithmetic. The cast is safe on little-endian targets that tolerate
-    // unaligned 64-bit loads (all current macOS/Linux x86-64 and ARM64),
-    // but UBSan flags it. Suppress alignment sanitization for these files.
-    const mayo_flags = base_flags ++ [_][]const u8{
-        "-DMAYO_VARIANT=MAYO_2",
-        "-DMAYO_BUILD_TYPE_OPT",
-        "-DHAVE_RANDOMBYTES_NORETVAL",
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/sig/mayo/pqmayo_mayo-2_opt")}),
-        "-fno-sanitize=alignment",
-    };
-    cliboqs_mod.addCSourceFiles(.{
-        .root = vendor_src,
-        .flags = &mayo_flags,
-        .files = &.{
-            "sig/mayo/sig_mayo_2.c",
-            "sig/mayo/pqmayo_mayo-2_opt/api.c",
-            "sig/mayo/pqmayo_mayo-2_opt/arithmetic.c",
-            "sig/mayo/pqmayo_mayo-2_opt/mayo.c",
-            "sig/mayo/pqmayo_mayo-2_opt/params.c",
-        },
-    });
+        // Build a fresh flag slice per entry on the build arena.
+        var flags: std.ArrayList([]const u8) = .empty;
+        flags.appendSlice(b.allocator, &base_flags) catch @panic("OOM");
+        for (entry.flags) |flag| {
+            if (flag.macos_only and !is_macos) continue;
+            flags.append(b.allocator, flag.text) catch @panic("OOM");
+        }
+        for (entry.includes) |inc| {
+            const abs = liboqs.path(b.fmt("src/{s}", .{inc})).getPath(b);
+            flags.append(b.allocator, b.fmt("-I{s}", .{abs})) catch @panic("OOM");
+        }
+
+        cliboqs_mod.addCSourceFiles(.{
+            .root = vendor_src,
+            .flags = flags.toOwnedSlice(b.allocator) catch @panic("OOM"),
+            .files = entry.files,
+        });
+    }
 
     b.installArtifact(cliboqs);
 
@@ -163,13 +218,24 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     oqs_mod.linkLibrary(cliboqs);
-    oqs_mod.addIncludePath(b.path("vendor/liboqs/include"));
+    oqs_mod.addIncludePath(oqs_include);
 
     const mod_tests = b.addTest(.{ .root_module = oqs_mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);
 
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_mod_tests.step);
+
+    // Smoke test: instantiate + round-trip across the enabled families.
+    const smoke_mod = b.createModule(.{
+        .root_source_file = b.path("tests/smoke.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    smoke_mod.addImport("oqs", oqs_mod);
+    const smoke_tests = b.addTest(.{ .root_module = smoke_mod });
+    const run_smoke_tests = b.addRunArtifact(smoke_tests);
+    test_step.dependOn(&run_smoke_tests.step);
 
     // ------------------------------------------------------------------
     // C reference harness: cref
@@ -184,7 +250,7 @@ pub fn build(b: *std.Build) void {
         .root_module = cref_mod,
     });
     cref_mod.addCSourceFile(.{ .file = b.path("harness/cref.c"), .flags = &.{"-std=c11"} });
-    cref_mod.addIncludePath(b.path("vendor/liboqs/include"));
+    cref_mod.addIncludePath(oqs_include);
     cref_mod.linkLibrary(cliboqs);
     b.installArtifact(cref);
 
