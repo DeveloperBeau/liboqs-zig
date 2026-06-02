@@ -36,6 +36,7 @@ for h in common/common.h common/rand/rand.h common/rand/rand_nist.h \
          common/sha3/sha3_ops.h common/sha3/sha3.h \
          common/sha3/sha3x4_ops.h common/sha3/sha3x4.h \
          kem/kem.h sig/sig.h \
+         sig_stfl/sig_stfl.h sig_stfl/xmss/sig_stfl_xmss.h sig_stfl/lms/sig_stfl_lms.h \
          kem/ml_kem/kem_ml_kem.h sig/ml_dsa/sig_ml_dsa.h sig/mayo/sig_mayo.h; do
   cp "$SRC/$h" "$DEST/include/oqs/"
 done
