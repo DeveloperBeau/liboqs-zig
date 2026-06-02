@@ -237,6 +237,17 @@ pub fn build(b: *std.Build) void {
     const run_smoke_tests = b.addRunArtifact(smoke_tests);
     test_step.dependOn(&run_smoke_tests.step);
 
+    // Typed-API tests: registry gate + namespace round-trips + type safety.
+    const typed_mod = b.createModule(.{
+        .root_source_file = b.path("tests/typed.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    typed_mod.addImport("oqs", oqs_mod);
+    const typed_tests = b.addTest(.{ .root_module = typed_mod });
+    const run_typed_tests = b.addRunArtifact(typed_tests);
+    test_step.dependOn(&run_typed_tests.step);
+
     // ------------------------------------------------------------------
     // C reference harness: cref
     // ------------------------------------------------------------------
