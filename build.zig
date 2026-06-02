@@ -1,4 +1,5 @@
 const std = @import("std");
+const manifest = @import("build/manifest.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -52,8 +53,10 @@ pub fn build(b: *std.Build) void {
         .{ "src/sig_stfl/xmss/sig_stfl_xmss.h", "oqs/sig_stfl_xmss.h" },
         .{ "src/sig_stfl/lms/sig_stfl_lms.h", "oqs/sig_stfl_lms.h" },
         .{ "src/kem/ml_kem/kem_ml_kem.h", "oqs/kem_ml_kem.h" },
+        .{ "src/kem/hqc/kem_hqc.h", "oqs/kem_hqc.h" },
         .{ "src/sig/ml_dsa/sig_ml_dsa.h", "oqs/sig_ml_dsa.h" },
         .{ "src/sig/mayo/sig_mayo.h", "oqs/sig_mayo.h" },
+        .{ "src/sig/falcon/sig_falcon.h", "oqs/sig_falcon.h" },
     };
     for (umbrella_headers) |h| {
         _ = hdrs.addCopyFile(liboqs.path(h[0]), h[1]);
@@ -79,10 +82,14 @@ pub fn build(b: *std.Build) void {
         cliboqs_mod.addIncludePath(liboqs.path(dir));
     }
 
-    // Base flags applied to every group.
+    // Base flags applied to every cliboqs C group.
+    // -fno-sanitize=alignment is library-wide: several PQClean impls do
+    // unaligned casts (e.g. uchar[] -> uint64_t* for GF arithmetic), safe on
+    // little-endian targets that tolerate unaligned loads but flagged by UBSan.
     const base_flags = [_][]const u8{
         "-std=c11",
         "-DOQS_DIST_BUILD=1",
+        "-fno-sanitize=alignment",
     };
 
     // --- common (portable, OpenSSL OFF) + dispatchers -----------------
@@ -118,78 +125,43 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    // --- ML-KEM-768 ---------------------------------------------------
-    // MLK_CONFIG_FILE expands inside a #include directive, so it must
-    // carry literal embedded quotes. The path is relative to the
-    // including file (mlkem/src/params.h), independent of CWD.
-    const mlkem_flags = base_flags ++ [_][]const u8{
-        "-DMLK_CONFIG_PARAMETER_SET=768",
-        "-DMLK_CONFIG_FILE=\"../../integration/liboqs/config_c.h\"",
-        b.fmt("-I{s}", .{liboqs.path("src/kem/ml_kem/mlkem-native_ml-kem-768_ref").getPath(b)}),
-        b.fmt("-I{s}", .{liboqs.path("src/common/pqclean_shims").getPath(b)}),
-    };
-    cliboqs_mod.addCSourceFiles(.{
-        .root = vendor_src,
-        .flags = &mlkem_flags,
-        .files = &.{
-            "kem/ml_kem/kem_ml_kem_768.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/compress.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/debug.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/indcpa.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/kem.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/poly.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/poly_k.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/sampling.c",
-            "kem/ml_kem/mlkem-native_ml-kem-768_ref/mlkem/src/verify.c",
-        },
-    });
+    // --- per-algorithm groups, driven by build/manifest.zig -----------
+    // Each manifest entry whose family is enabled becomes one
+    // addCSourceFiles group. Families come online incrementally via this
+    // enable list. Enabling a family compiles ALL its variants (this is how
+    // upstream builds; PQClean/mlkem-native namespace per-variant so there
+    // are no symbol clashes).
+    const enabled_families = [_][]const u8{ "ml_kem", "ml_dsa", "mayo", "hqc", "falcon" };
+    const is_macos = target.result.os.tag == .macos;
 
-    // --- ML-DSA-65 ----------------------------------------------------
-    const mldsa_flags = base_flags ++ [_][]const u8{
-        "-DDILITHIUM_MODE=3",
-        b.fmt("-I{s}", .{liboqs.path("src/sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref").getPath(b)}),
-        b.fmt("-I{s}", .{liboqs.path("src/common/pqclean_shims").getPath(b)}),
-    };
-    cliboqs_mod.addCSourceFiles(.{
-        .root = vendor_src,
-        .flags = &mldsa_flags,
-        .files = &.{
-            "sig/ml_dsa/sig_ml_dsa_65.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/ntt.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/packing.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/poly.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/polyvec.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/reduce.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/rounding.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/sign.c",
-            "sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref/symmetric-shake.c",
-        },
-    });
+    for (manifest.algorithms) |entry| {
+        var enabled = false;
+        for (enabled_families) |fam| {
+            if (std.mem.eql(u8, fam, entry.family)) {
+                enabled = true;
+                break;
+            }
+        }
+        if (!enabled) continue;
 
-    // --- MAYO-2 -------------------------------------------------------
-    // -fno-sanitize=alignment: the MAYO-2 opt implementation casts an
-    // unsigned char[] stack buffer to uint64_t* for SIMD-style GF(16)
-    // arithmetic. The cast is safe on little-endian targets that tolerate
-    // unaligned 64-bit loads (all current macOS/Linux x86-64 and ARM64),
-    // but UBSan flags it. Suppress alignment sanitization for these files.
-    const mayo_flags = base_flags ++ [_][]const u8{
-        "-DMAYO_VARIANT=MAYO_2",
-        "-DMAYO_BUILD_TYPE_OPT",
-        "-DHAVE_RANDOMBYTES_NORETVAL",
-        b.fmt("-I{s}", .{liboqs.path("src/sig/mayo/pqmayo_mayo-2_opt").getPath(b)}),
-        "-fno-sanitize=alignment",
-    };
-    cliboqs_mod.addCSourceFiles(.{
-        .root = vendor_src,
-        .flags = &mayo_flags,
-        .files = &.{
-            "sig/mayo/sig_mayo_2.c",
-            "sig/mayo/pqmayo_mayo-2_opt/api.c",
-            "sig/mayo/pqmayo_mayo-2_opt/arithmetic.c",
-            "sig/mayo/pqmayo_mayo-2_opt/mayo.c",
-            "sig/mayo/pqmayo_mayo-2_opt/params.c",
-        },
-    });
+        // Build a fresh flag slice per entry on the build arena.
+        var flags: std.ArrayList([]const u8) = .empty;
+        flags.appendSlice(b.allocator, &base_flags) catch @panic("OOM");
+        for (entry.flags) |flag| {
+            if (flag.macos_only and !is_macos) continue;
+            flags.append(b.allocator, flag.text) catch @panic("OOM");
+        }
+        for (entry.includes) |inc| {
+            const abs = liboqs.path(b.fmt("src/{s}", .{inc})).getPath(b);
+            flags.append(b.allocator, b.fmt("-I{s}", .{abs})) catch @panic("OOM");
+        }
+
+        cliboqs_mod.addCSourceFiles(.{
+            .root = vendor_src,
+            .flags = flags.toOwnedSlice(b.allocator) catch @panic("OOM"),
+            .files = entry.files,
+        });
+    }
 
     b.installArtifact(cliboqs);
 
@@ -209,6 +181,17 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_mod_tests.step);
+
+    // Smoke test: instantiate + round-trip across the enabled families.
+    const smoke_mod = b.createModule(.{
+        .root_source_file = b.path("tests/smoke.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    smoke_mod.addImport("oqs", oqs_mod);
+    const smoke_tests = b.addTest(.{ .root_module = smoke_mod });
+    const run_smoke_tests = b.addRunArtifact(smoke_tests);
+    test_step.dependOn(&run_smoke_tests.step);
 
     // ------------------------------------------------------------------
     // C reference harness: cref
