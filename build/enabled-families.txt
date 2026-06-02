@@ -1,0 +1,15 @@
+# Single source of truth for which liboqs families are compiled and exposed.
+#
+# Consumed by BOTH build.zig (compile filter + umbrella header assembly) and
+# tools/gen-manifest.sh (scopes include/oqs/oqsconfig.h to exactly these).
+#
+# One family per line, matching the manifest `family` field / liboqs family
+# dir names. Blank lines and `#` comments are ignored.
+#
+# Workflow to add a family: add its name here -> re-run tools/gen-manifest.sh
+# -> `zig build` -> smoke-test.
+ml_kem
+ml_dsa
+mayo
+hqc
+falcon

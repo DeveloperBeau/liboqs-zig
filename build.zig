@@ -1,6 +1,44 @@
 const std = @import("std");
 const manifest = @import("build/manifest.zig");
 
+// Single source of truth for which liboqs families are compiled and exposed.
+// The same list scopes include/oqs/oqsconfig.h via tools/gen-manifest.sh.
+// @embedFile (not a configure-time read) so editing the txt forces a rebuild.
+const enabled_families = parseFamilies(@embedFile("build/enabled-families.txt"));
+
+/// Parse the enabled-families manifest at comptime: one family per line,
+/// trimmed, skipping blank lines and `#` comments.
+fn parseFamilies(comptime raw: []const u8) []const []const u8 {
+    @setEvalBranchQuota(10000);
+    comptime {
+        var families: []const []const u8 = &.{};
+        var it = std.mem.tokenizeScalar(u8, raw, '\n');
+        while (it.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, " \t\r");
+            if (trimmed.len == 0 or trimmed[0] == '#') continue;
+            families = families ++ .{trimmed};
+        }
+        return families;
+    }
+}
+
+/// Look up a family's kind ("kem"/"sig") from the manifest. Panics if the
+/// family has no manifest entry (i.e. enabled-families.txt names something the
+/// generator does not know about).
+fn familyKind(comptime family: []const u8) []const u8 {
+    comptime {
+        for (manifest.algorithms) |entry| {
+            if (std.mem.eql(u8, entry.family, family)) {
+                return switch (entry.kind) {
+                    .kem => "kem",
+                    .sig => "sig",
+                };
+            }
+        }
+        @compileError("enabled-families.txt names '" ++ family ++ "' which has no entry in build/manifest.zig");
+    }
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -52,14 +90,20 @@ pub fn build(b: *std.Build) void {
         .{ "src/sig_stfl/sig_stfl.h", "oqs/sig_stfl.h" },
         .{ "src/sig_stfl/xmss/sig_stfl_xmss.h", "oqs/sig_stfl_xmss.h" },
         .{ "src/sig_stfl/lms/sig_stfl_lms.h", "oqs/sig_stfl_lms.h" },
-        .{ "src/kem/ml_kem/kem_ml_kem.h", "oqs/kem_ml_kem.h" },
-        .{ "src/kem/hqc/kem_hqc.h", "oqs/kem_hqc.h" },
-        .{ "src/sig/ml_dsa/sig_ml_dsa.h", "oqs/sig_ml_dsa.h" },
-        .{ "src/sig/mayo/sig_mayo.h", "oqs/sig_mayo.h" },
-        .{ "src/sig/falcon/sig_falcon.h", "oqs/sig_falcon.h" },
     };
     for (umbrella_headers) |h| {
         _ = hdrs.addCopyFile(liboqs.path(h[0]), h[1]);
+    }
+
+    // Per-family umbrella headers, derived from enabled_families. Each family's
+    // umbrella is oqs/<kind>_<family>.h (kem_<f>.h for KEMs, sig_<f>.h for SIGs);
+    // its kind comes from the manifest. kem.h/sig.h #include these under the
+    // family-level OQS_ENABLE_* guards, so the enabled set must match oqsconfig.h.
+    inline for (enabled_families) |fam| {
+        const sub = comptime familyKind(fam); // "kem" or "sig"
+        const rel = b.fmt("src/{s}/{s}/{s}_{s}.h", .{ sub, fam, sub, fam });
+        const dst = b.fmt("oqs/{s}_{s}.h", .{ sub, fam });
+        _ = hdrs.addCopyFile(liboqs.path(rel), dst);
     }
     const oqs_include = hdrs.getDirectory();
 
@@ -131,7 +175,6 @@ pub fn build(b: *std.Build) void {
     // enable list. Enabling a family compiles ALL its variants (this is how
     // upstream builds; PQClean/mlkem-native namespace per-variant so there
     // are no symbol clashes).
-    const enabled_families = [_][]const u8{ "ml_kem", "ml_dsa", "mayo", "hqc", "falcon" };
     const is_macos = target.result.os.tag == .macos;
 
     for (manifest.algorithms) |entry| {
