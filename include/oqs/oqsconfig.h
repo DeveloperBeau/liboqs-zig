@@ -32,19 +32,59 @@
 #define OQS_LIBJADE_BUILD 0
 
 // --- KEMs ---
+#define OQS_ENABLE_KEM_CLASSIC_MCELIECE 1
 #define OQS_ENABLE_KEM_HQC 1
 #define OQS_ENABLE_KEM_ML_KEM 1
+#define OQS_ENABLE_KEM_NTRU 1
+#define OQS_ENABLE_KEM_NTRUPRIME 1
+#define OQS_ENABLE_KEM_classic_mceliece_348864 1
+#define OQS_ENABLE_KEM_classic_mceliece_348864f 1
+#define OQS_ENABLE_KEM_classic_mceliece_460896 1
+#define OQS_ENABLE_KEM_classic_mceliece_460896f 1
+#define OQS_ENABLE_KEM_classic_mceliece_6688128 1
+#define OQS_ENABLE_KEM_classic_mceliece_6688128f 1
+#define OQS_ENABLE_KEM_classic_mceliece_6960119 1
+#define OQS_ENABLE_KEM_classic_mceliece_6960119f 1
+#define OQS_ENABLE_KEM_classic_mceliece_8192128 1
+#define OQS_ENABLE_KEM_classic_mceliece_8192128f 1
 #define OQS_ENABLE_KEM_hqc_128 1
 #define OQS_ENABLE_KEM_hqc_192 1
 #define OQS_ENABLE_KEM_hqc_256 1
 #define OQS_ENABLE_KEM_ml_kem_1024 1
 #define OQS_ENABLE_KEM_ml_kem_512 1
 #define OQS_ENABLE_KEM_ml_kem_768 1
+#define OQS_ENABLE_KEM_ntru_hps2048509 1
+#define OQS_ENABLE_KEM_ntru_hps2048677 1
+#define OQS_ENABLE_KEM_ntru_hps40961229 1
+#define OQS_ENABLE_KEM_ntru_hps4096821 1
+#define OQS_ENABLE_KEM_ntru_hrss1373 1
+#define OQS_ENABLE_KEM_ntru_hrss701 1
+#define OQS_ENABLE_KEM_ntruprime_sntrup761 1
 
 // --- SIGs ---
+#define OQS_ENABLE_SIG_CROSS 1
 #define OQS_ENABLE_SIG_FALCON 1
 #define OQS_ENABLE_SIG_MAYO 1
 #define OQS_ENABLE_SIG_ML_DSA 1
+#define OQS_ENABLE_SIG_SPHINCS 1
+#define OQS_ENABLE_SIG_cross_rsdp_128_balanced 1
+#define OQS_ENABLE_SIG_cross_rsdp_128_fast 1
+#define OQS_ENABLE_SIG_cross_rsdp_128_small 1
+#define OQS_ENABLE_SIG_cross_rsdp_192_balanced 1
+#define OQS_ENABLE_SIG_cross_rsdp_192_fast 1
+#define OQS_ENABLE_SIG_cross_rsdp_192_small 1
+#define OQS_ENABLE_SIG_cross_rsdp_256_balanced 1
+#define OQS_ENABLE_SIG_cross_rsdp_256_fast 1
+#define OQS_ENABLE_SIG_cross_rsdp_256_small 1
+#define OQS_ENABLE_SIG_cross_rsdpg_128_balanced 1
+#define OQS_ENABLE_SIG_cross_rsdpg_128_fast 1
+#define OQS_ENABLE_SIG_cross_rsdpg_128_small 1
+#define OQS_ENABLE_SIG_cross_rsdpg_192_balanced 1
+#define OQS_ENABLE_SIG_cross_rsdpg_192_fast 1
+#define OQS_ENABLE_SIG_cross_rsdpg_192_small 1
+#define OQS_ENABLE_SIG_cross_rsdpg_256_balanced 1
+#define OQS_ENABLE_SIG_cross_rsdpg_256_fast 1
+#define OQS_ENABLE_SIG_cross_rsdpg_256_small 1
 #define OQS_ENABLE_SIG_falcon_1024 1
 #define OQS_ENABLE_SIG_falcon_512 1
 #define OQS_ENABLE_SIG_falcon_padded_1024 1
@@ -56,6 +96,18 @@
 #define OQS_ENABLE_SIG_ml_dsa_44 1
 #define OQS_ENABLE_SIG_ml_dsa_65 1
 #define OQS_ENABLE_SIG_ml_dsa_87 1
+#define OQS_ENABLE_SIG_sphincs_sha2_128f_simple 1
+#define OQS_ENABLE_SIG_sphincs_sha2_128s_simple 1
+#define OQS_ENABLE_SIG_sphincs_sha2_192f_simple 1
+#define OQS_ENABLE_SIG_sphincs_sha2_192s_simple 1
+#define OQS_ENABLE_SIG_sphincs_sha2_256f_simple 1
+#define OQS_ENABLE_SIG_sphincs_sha2_256s_simple 1
+#define OQS_ENABLE_SIG_sphincs_shake_128f_simple 1
+#define OQS_ENABLE_SIG_sphincs_shake_128s_simple 1
+#define OQS_ENABLE_SIG_sphincs_shake_192f_simple 1
+#define OQS_ENABLE_SIG_sphincs_shake_192s_simple 1
+#define OQS_ENABLE_SIG_sphincs_shake_256f_simple 1
+#define OQS_ENABLE_SIG_sphincs_shake_256s_simple 1
 
 // Families not listed in build/enabled-families.txt, plus UOV (requires
 // OpenSSL) and stateful signatures (XMSS/LMS), are intentionally left

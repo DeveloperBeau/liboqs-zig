@@ -9,6 +9,9 @@ const kem_names = [_][:0]const u8{
     "HQC-128",
     "HQC-192",
     "HQC-256",
+    "Classic-McEliece-348864",
+    "NTRU-HPS-2048-509",
+    "sntrup761",
 };
 
 const sig_names = [_][:0]const u8{
@@ -18,6 +21,8 @@ const sig_names = [_][:0]const u8{
     "Falcon-1024",
     "Falcon-padded-512",
     "Falcon-padded-1024",
+    "SPHINCS+-SHA2-128f-simple",
+    "cross-rsdp-128-balanced",
 };
 
 fn kemRoundTrip(name: [:0]const u8) !void {

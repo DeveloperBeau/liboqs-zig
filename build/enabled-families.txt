@@ -13,3 +13,8 @@ ml_dsa
 mayo
 hqc
 falcon
+classic_mceliece
+ntru
+ntruprime
+sphincs
+cross
