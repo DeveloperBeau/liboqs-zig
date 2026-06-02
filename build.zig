@@ -170,4 +170,50 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_mod_tests.step);
+
+    // ------------------------------------------------------------------
+    // C reference harness: cref
+    // ------------------------------------------------------------------
+    const cref_mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const cref = b.addExecutable(.{
+        .name = "cref",
+        .root_module = cref_mod,
+    });
+    cref_mod.addCSourceFile(.{ .file = b.path("harness/cref.c"), .flags = &.{"-std=c11"} });
+    cref_mod.addIncludePath(b.path("vendor/liboqs/include"));
+    cref_mod.linkLibrary(cliboqs);
+    b.installArtifact(cref);
+
+    // ------------------------------------------------------------------
+    // Zig wrapper harness: zref
+    // ------------------------------------------------------------------
+    const zref_mod = b.createModule(.{
+        .root_source_file = b.path("harness/zref.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    zref_mod.addImport("oqs", oqs_mod);
+    const zref = b.addExecutable(.{
+        .name = "zref",
+        .root_module = zref_mod,
+    });
+    b.installArtifact(zref);
+
+    // ------------------------------------------------------------------
+    // Parity gate: diff cref vs zref output
+    // ------------------------------------------------------------------
+    const parity_mod = b.createModule(.{
+        .root_source_file = b.path("tests/parity.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const parity = b.addTest(.{ .root_module = parity_mod });
+    const run_parity = b.addRunArtifact(parity);
+    run_parity.step.dependOn(b.getInstallStep());
+    const parity_step = b.step("parity", "Diff C reference vs Zig wrapper output");
+    parity_step.dependOn(&run_parity.step);
 }
