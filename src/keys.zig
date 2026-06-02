@@ -24,25 +24,21 @@ pub fn zeroAndFree(allocator: std.mem.Allocator, bytes: []u8) void {
     allocator.free(bytes);
 }
 
-test "SharedSecret does not survive deinit" {
-    // The security property — the secret is gone after deinit — holds in every
-    // build mode, but the mechanism differs, so assert what's observable:
-    //   - safety builds (Debug/ReleaseSafe): `Allocator.free` overwrites the
-    //     freed region with the 0xAA `undefined` poison *after* our secureZero,
-    //     so we can only assert the secret no longer survives (poison ≠ secret).
-    //   - ReleaseFast/ReleaseSmall: no poison, so secureZero is the only thing
-    //     that clears it — assert exact zeroing. This is the case that catches
-    //     a deleted secureZero (the build's ReleaseFast test run exercises it).
-    // Back the secret with a fixed buffer so the memory stays valid and
-    // inspectable after deinit frees it (FBA's free is a no-op rewind here).
-    const secret = [_]u8{ 1, 2, 3, 4 };
-    var backing: [4]u8 = secret;
+test "deinit zeroes the secret" {
+    // This test can only observe our secureZero in NON-safety builds. In safety
+    // builds (Debug/ReleaseSafe) `Allocator.free` overwrites the freed region
+    // with the 0xAA `undefined` poison *after* our secureZero runs, so the
+    // freed bytes are 0xAA regardless of whether we zeroed — the toolchain, not
+    // our code, would be under test. We therefore skip there and let the
+    // ReleaseFast run in build.zig be the real guard: it executes this exact
+    // deinit path with no poison, so deleting secureZero from zeroAndFree makes
+    // it fail (the bytes stay the original secret instead of zero).
+    if (std.debug.runtime_safety) return error.SkipZigTest;
+    // FBA over a stack buffer: free is a no-op rewind, so the bytes stay
+    // inspectable after deinit and reflect only what secureZero wrote.
+    var backing: [4]u8 = .{ 1, 2, 3, 4 };
     var fba = std.heap.FixedBufferAllocator.init(&backing);
     var ss = SharedSecret.fromOwned(fba.allocator(), backing[0..]);
     ss.deinit();
-    if (std.debug.runtime_safety) {
-        try std.testing.expect(!std.mem.eql(u8, &backing, &secret));
-    } else {
-        try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0 }, &backing);
-    }
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0 }, &backing);
 }
