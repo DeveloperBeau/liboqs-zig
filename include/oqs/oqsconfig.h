@@ -78,6 +78,7 @@
 #define OQS_ENABLE_SIG_MAYO 1
 #define OQS_ENABLE_SIG_ML_DSA 1
 #define OQS_ENABLE_SIG_SLH_DSA 1
+#define OQS_ENABLE_SIG_SNOVA 1
 #define OQS_ENABLE_SIG_SPHINCS 1
 #define OQS_ENABLE_SIG_cross_rsdp_128_balanced 1
 #define OQS_ENABLE_SIG_cross_rsdp_128_fast 1
@@ -264,6 +265,18 @@
 #define OQS_ENABLE_SIG_slh_dsa_shake_256_prehash_shake_192s 1
 #define OQS_ENABLE_SIG_slh_dsa_shake_256_prehash_shake_256f 1
 #define OQS_ENABLE_SIG_slh_dsa_shake_256_prehash_shake_256s 1
+#define OQS_ENABLE_SIG_snova_SNOVA_24_5_4 1
+#define OQS_ENABLE_SIG_snova_SNOVA_24_5_4_SHAKE 1
+#define OQS_ENABLE_SIG_snova_SNOVA_24_5_4_SHAKE_esk 1
+#define OQS_ENABLE_SIG_snova_SNOVA_24_5_4_esk 1
+#define OQS_ENABLE_SIG_snova_SNOVA_24_5_5 1
+#define OQS_ENABLE_SIG_snova_SNOVA_25_8_3 1
+#define OQS_ENABLE_SIG_snova_SNOVA_29_6_5 1
+#define OQS_ENABLE_SIG_snova_SNOVA_37_17_2 1
+#define OQS_ENABLE_SIG_snova_SNOVA_37_8_4 1
+#define OQS_ENABLE_SIG_snova_SNOVA_49_11_3 1
+#define OQS_ENABLE_SIG_snova_SNOVA_56_25_2 1
+#define OQS_ENABLE_SIG_snova_SNOVA_60_10_4 1
 #define OQS_ENABLE_SIG_sphincs_sha2_128f_simple 1
 #define OQS_ENABLE_SIG_sphincs_sha2_128s_simple 1
 #define OQS_ENABLE_SIG_sphincs_sha2_192f_simple 1

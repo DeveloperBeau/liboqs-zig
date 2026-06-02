@@ -26,6 +26,7 @@ const sig_names = [_][:0]const u8{
     "SPHINCS+-SHA2-128f-simple",
     "cross-rsdp-128-balanced",
     "SLH_DSA_PURE_SHA2_128F",
+    "SNOVA_24_5_4",
 };
 
 fn kemRoundTrip(name: [:0]const u8) !void {

@@ -21,3 +21,4 @@ cross
 kyber
 slh_dsa
 frodokem
+snova
