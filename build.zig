@@ -128,11 +128,17 @@ pub fn build(b: *std.Build) void {
     });
 
     // --- MAYO-2 -------------------------------------------------------
+    // -fno-sanitize=alignment: the MAYO-2 opt implementation casts an
+    // unsigned char[] stack buffer to uint64_t* for SIMD-style GF(16)
+    // arithmetic. The cast is safe on little-endian targets that tolerate
+    // unaligned 64-bit loads (all current macOS/Linux x86-64 and ARM64),
+    // but UBSan flags it. Suppress alignment sanitization for these files.
     const mayo_flags = base_flags ++ [_][]const u8{
         "-DMAYO_VARIANT=MAYO_2",
         "-DMAYO_BUILD_TYPE_OPT",
         "-DHAVE_RANDOMBYTES_NORETVAL",
         b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/sig/mayo/pqmayo_mayo-2_opt")}),
+        "-fno-sanitize=alignment",
     };
     cliboqs_mod.addCSourceFiles(.{
         .root = vendor_src,
