@@ -3,3 +3,4 @@ graphy-out/
 .zig-cache/
 zig-cache/
 zig-out/
+*.local.md
