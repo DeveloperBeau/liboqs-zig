@@ -1,0 +1,17 @@
+.{
+    .name = .zigoqs,
+    .version = "0.0.0",
+    .fingerprint = 0x950bb1aef9d51e5f,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "harness",
+        "tests",
+        "vendor",
+        "tools",
+        "LICENSE",
+    },
+}
