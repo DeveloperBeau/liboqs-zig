@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void seed(void) {
     uint8_t e[48];
@@ -50,10 +51,35 @@ static void run_sig(const char *algo) {
     free(pk); free(sk); free(sig); OQS_SIG_free(s);
 }
 
+/* Every enabled algorithm is exercised with every operation — full coverage,
+ * no reduced tier. The full set is slow (Classic McEliece keygen, SPHINCS+/
+ * SLH-DSA signing), so the run is shardable for parallelism: OQS_SHARD /
+ * OQS_TOTAL select the algorithms at combined-index % total == shard. Per-op
+ * KAT re-seeding makes each algorithm's output independent of the shard split,
+ * so merging all shards reproduces the full single-process output exactly.
+ * Unset env => run the entire set in one process. */
 int main(void) {
+    const char *s = getenv("OQS_SHARD"), *t = getenv("OQS_TOTAL");
+    long shard = s ? atol(s) : 0;
+    long total = t ? atol(t) : 1;
+    if (total < 1) total = 1;
     OQS_init();
-    run_kem("ML-KEM-768");
-    run_sig("ML-DSA-65");
-    run_sig("MAYO-2");
+    long idx = 0;
+    for (size_t i = 0; i < (size_t)OQS_KEM_alg_count(); i++) {
+        const char *name = OQS_KEM_alg_identifier(i);
+        if (!OQS_KEM_alg_is_enabled(name)) continue;
+        if (idx++ % total == shard) {
+            fprintf(stderr, "  cref[%ld] %s\n", shard, name);
+            run_kem(name);
+        }
+    }
+    for (size_t i = 0; i < (size_t)OQS_SIG_alg_count(); i++) {
+        const char *name = OQS_SIG_alg_identifier(i);
+        if (!OQS_SIG_alg_is_enabled(name)) continue;
+        if (idx++ % total == shard) {
+            fprintf(stderr, "  cref[%ld] %s\n", shard, name);
+            run_sig(name);
+        }
+    }
     return 0;
 }

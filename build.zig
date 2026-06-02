@@ -263,6 +263,28 @@ pub fn build(b: *std.Build) void {
     const run_keys_release_tests = b.addRunArtifact(keys_release_tests);
     test_step.dependOn(&run_keys_release_tests.step);
 
+    // Functional behavior tests (system RNG; never seeds KAT).
+    const functional_mod = b.createModule(.{
+        .root_source_file = b.path("tests/functional.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    functional_mod.addImport("oqs", oqs_mod);
+    const functional_tests = b.addTest(.{ .root_module = functional_mod });
+    const run_functional_tests = b.addRunArtifact(functional_tests);
+    test_step.dependOn(&run_functional_tests.step);
+
+    // Concurrency tests (system RNG; own binary so no KAT DRBG leaks in).
+    const concurrency_mod = b.createModule(.{
+        .root_source_file = b.path("tests/concurrency.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    concurrency_mod.addImport("oqs", oqs_mod);
+    const concurrency_tests = b.addTest(.{ .root_module = concurrency_mod });
+    const run_concurrency_tests = b.addRunArtifact(concurrency_tests);
+    test_step.dependOn(&run_concurrency_tests.step);
+
     // ------------------------------------------------------------------
     // C reference harness: cref
     // ------------------------------------------------------------------
@@ -296,16 +318,23 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(zref);
 
     // ------------------------------------------------------------------
-    // Parity gate: diff cref vs zref output
+    // Parity gate: full-coverage byte-identical diff of cref vs zref.
+    // Script-driven (addSystemCommand) so the sharded harnesses' per-algorithm
+    // progress streams live to the terminal — a Zig test would buffer it and a
+    // multi-minute run would look hung. See tools/parity.sh.
     // ------------------------------------------------------------------
-    const parity_mod = b.createModule(.{
-        .root_source_file = b.path("tests/parity.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const parity = b.addTest(.{ .root_module = parity_mod });
-    const run_parity = b.addRunArtifact(parity);
+    const run_parity = b.addSystemCommand(&.{ "bash", "tools/parity.sh" });
     run_parity.step.dependOn(b.getInstallStep());
-    const parity_step = b.step("parity", "Diff C reference vs Zig wrapper output");
+    run_parity.has_side_effects = true; // always re-run; not cacheable
+    const parity_step = b.step("parity", "Full byte-identical parity: C reference vs Zig wrapper");
     parity_step.dependOn(&run_parity.step);
+
+    // ------------------------------------------------------------------
+    // Snapshot gate: zref output vs frozen liboqs reference digests.
+    // ------------------------------------------------------------------
+    const run_snapshot = b.addSystemCommand(&.{ "bash", "tools/snapshot.sh" });
+    run_snapshot.step.dependOn(b.getInstallStep());
+    run_snapshot.has_side_effects = true;
+    const snapshot_step = b.step("snapshot", "Check zref against the frozen liboqs reference snapshot");
+    snapshot_step.dependOn(&run_snapshot.step);
 }
