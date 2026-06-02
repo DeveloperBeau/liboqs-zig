@@ -237,6 +237,32 @@ pub fn build(b: *std.Build) void {
     const run_smoke_tests = b.addRunArtifact(smoke_tests);
     test_step.dependOn(&run_smoke_tests.step);
 
+    // Typed-API tests: registry gate + namespace round-trips + type safety.
+    const typed_mod = b.createModule(.{
+        .root_source_file = b.path("tests/typed.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    typed_mod.addImport("oqs", oqs_mod);
+    const typed_tests = b.addTest(.{ .root_module = typed_mod });
+    const run_typed_tests = b.addRunArtifact(typed_tests);
+    test_step.dependOn(&run_typed_tests.step);
+
+    // Secret-zeroing test, forced to ReleaseFast. In safety builds
+    // (Debug/ReleaseSafe) Allocator.free poisons freed memory with 0xAA after
+    // our secureZero, so the zeroing is unobservable and that test skips. This
+    // ReleaseFast run is where the guarantee is actually exercised — without
+    // it, deleting the secureZero call would leave `zig build test` green.
+    // keys.zig only imports std, so this needs no cliboqs linkage.
+    const keys_release_mod = b.createModule(.{
+        .root_source_file = b.path("src/keys.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    const keys_release_tests = b.addTest(.{ .root_module = keys_release_mod });
+    const run_keys_release_tests = b.addRunArtifact(keys_release_tests);
+    test_step.dependOn(&run_keys_release_tests.step);
+
     // ------------------------------------------------------------------
     // C reference harness: cref
     // ------------------------------------------------------------------
