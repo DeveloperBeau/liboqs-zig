@@ -19,25 +19,64 @@ pub fn build(b: *std.Build) void {
         .root_module = cliboqs_mod,
     });
 
+    // liboqs C source comes from a hash-pinned dependency (build.zig.zon),
+    // fetched by `zig fetch`. The tarball unpacks to a tree whose source
+    // root is `src/` (same relative layout as the old vendored slice).
+    const liboqs = b.dependency("liboqs", .{});
+
     // Root for all relative C source paths below.
-    const vendor_src = b.path("vendor/liboqs/src");
+    const vendor_src = liboqs.path("src");
+
+    // Assemble the public `oqs/` umbrella include directory at build time:
+    // copy each required upstream header to `oqs/<basename>`, plus our
+    // in-repo (hand-maintained) oqsconfig.h. The result is a generated
+    // LazyPath consumed as an include dir by every group below.
+    const hdrs = b.addWriteFiles();
+    _ = hdrs.addCopyFile(b.path("include/oqs/oqsconfig.h"), "oqs/oqsconfig.h");
+    const umbrella_headers = [_]struct { []const u8, []const u8 }{
+        .{ "src/oqs.h", "oqs/oqs.h" },
+        .{ "src/common/common.h", "oqs/common.h" },
+        .{ "src/common/rand/rand.h", "oqs/rand.h" },
+        .{ "src/common/rand/rand_nist.h", "oqs/rand_nist.h" },
+        .{ "src/common/aes/aes_ops.h", "oqs/aes_ops.h" },
+        .{ "src/common/aes/aes.h", "oqs/aes.h" },
+        .{ "src/common/sha2/sha2_ops.h", "oqs/sha2_ops.h" },
+        .{ "src/common/sha2/sha2.h", "oqs/sha2.h" },
+        .{ "src/common/sha3/sha3_ops.h", "oqs/sha3_ops.h" },
+        .{ "src/common/sha3/sha3.h", "oqs/sha3.h" },
+        .{ "src/common/sha3/sha3x4_ops.h", "oqs/sha3x4_ops.h" },
+        .{ "src/common/sha3/sha3x4.h", "oqs/sha3x4.h" },
+        .{ "src/kem/kem.h", "oqs/kem.h" },
+        .{ "src/sig/sig.h", "oqs/sig.h" },
+        .{ "src/sig_stfl/sig_stfl.h", "oqs/sig_stfl.h" },
+        .{ "src/sig_stfl/xmss/sig_stfl_xmss.h", "oqs/sig_stfl_xmss.h" },
+        .{ "src/sig_stfl/lms/sig_stfl_lms.h", "oqs/sig_stfl_lms.h" },
+        .{ "src/kem/ml_kem/kem_ml_kem.h", "oqs/kem_ml_kem.h" },
+        .{ "src/sig/ml_dsa/sig_ml_dsa.h", "oqs/sig_ml_dsa.h" },
+        .{ "src/sig/mayo/sig_mayo.h", "oqs/sig_mayo.h" },
+    };
+    for (umbrella_headers) |h| {
+        _ = hdrs.addCopyFile(liboqs.path(h[0]), h[1]);
+    }
+    const oqs_include = hdrs.getDirectory();
 
     // Library-global include paths (order matters: pqclean_shims must
-    // resolve before the internal sha2/sha3 headers).
+    // resolve before the internal sha2/sha3 headers). The assembled
+    // umbrella dir replaces the old vendored `include/`.
+    cliboqs_mod.addIncludePath(oqs_include);
     const include_dirs = [_][]const u8{
-        "vendor/liboqs/include",
-        "vendor/liboqs/src",
-        "vendor/liboqs/src/common",
-        "vendor/liboqs/src/common/pqclean_shims",
-        "vendor/liboqs/src/common/aes",
-        "vendor/liboqs/src/common/sha2",
-        "vendor/liboqs/src/common/sha3",
-        "vendor/liboqs/src/common/sha3/xkcp_low/KeccakP-1600/plain-64bits",
-        "vendor/liboqs/src/common/sha3/xkcp_low/KeccakP-1600times4/serial",
-        "vendor/liboqs/src/common/rand",
+        "src",
+        "src/common",
+        "src/common/pqclean_shims",
+        "src/common/aes",
+        "src/common/sha2",
+        "src/common/sha3",
+        "src/common/sha3/xkcp_low/KeccakP-1600/plain-64bits",
+        "src/common/sha3/xkcp_low/KeccakP-1600times4/serial",
+        "src/common/rand",
     };
     for (include_dirs) |dir| {
-        cliboqs_mod.addIncludePath(b.path(dir));
+        cliboqs_mod.addIncludePath(liboqs.path(dir));
     }
 
     // Base flags applied to every group.
@@ -86,8 +125,8 @@ pub fn build(b: *std.Build) void {
     const mlkem_flags = base_flags ++ [_][]const u8{
         "-DMLK_CONFIG_PARAMETER_SET=768",
         "-DMLK_CONFIG_FILE=\"../../integration/liboqs/config_c.h\"",
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/kem/ml_kem/mlkem-native_ml-kem-768_ref")}),
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/common/pqclean_shims")}),
+        b.fmt("-I{s}", .{liboqs.path("src/kem/ml_kem/mlkem-native_ml-kem-768_ref").getPath(b)}),
+        b.fmt("-I{s}", .{liboqs.path("src/common/pqclean_shims").getPath(b)}),
     };
     cliboqs_mod.addCSourceFiles(.{
         .root = vendor_src,
@@ -108,8 +147,8 @@ pub fn build(b: *std.Build) void {
     // --- ML-DSA-65 ----------------------------------------------------
     const mldsa_flags = base_flags ++ [_][]const u8{
         "-DDILITHIUM_MODE=3",
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref")}),
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/common/pqclean_shims")}),
+        b.fmt("-I{s}", .{liboqs.path("src/sig/ml_dsa/pqcrystals-dilithium-standard_ml-dsa-65_ref").getPath(b)}),
+        b.fmt("-I{s}", .{liboqs.path("src/common/pqclean_shims").getPath(b)}),
     };
     cliboqs_mod.addCSourceFiles(.{
         .root = vendor_src,
@@ -137,7 +176,7 @@ pub fn build(b: *std.Build) void {
         "-DMAYO_VARIANT=MAYO_2",
         "-DMAYO_BUILD_TYPE_OPT",
         "-DHAVE_RANDOMBYTES_NORETVAL",
-        b.fmt("-I{s}", .{b.pathFromRoot("vendor/liboqs/src/sig/mayo/pqmayo_mayo-2_opt")}),
+        b.fmt("-I{s}", .{liboqs.path("src/sig/mayo/pqmayo_mayo-2_opt").getPath(b)}),
         "-fno-sanitize=alignment",
     };
     cliboqs_mod.addCSourceFiles(.{
@@ -163,7 +202,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     oqs_mod.linkLibrary(cliboqs);
-    oqs_mod.addIncludePath(b.path("vendor/liboqs/include"));
+    oqs_mod.addIncludePath(oqs_include);
 
     const mod_tests = b.addTest(.{ .root_module = oqs_mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);
@@ -184,7 +223,7 @@ pub fn build(b: *std.Build) void {
         .root_module = cref_mod,
     });
     cref_mod.addCSourceFile(.{ .file = b.path("harness/cref.c"), .flags = &.{"-std=c11"} });
-    cref_mod.addIncludePath(b.path("vendor/liboqs/include"));
+    cref_mod.addIncludePath(oqs_include);
     cref_mod.linkLibrary(cliboqs);
     b.installArtifact(cref);
 

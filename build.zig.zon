@@ -3,14 +3,19 @@
     .version = "0.0.0",
     .fingerprint = 0x950bb1aef9d51e5f,
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .liboqs = .{
+            .url = "https://github.com/open-quantum-safe/liboqs/archive/refs/tags/0.15.0.tar.gz",
+            .hash = "N-V-__8AAMKwnAj213yCr1-7zkInqKPRXLMSCCovScERxsof",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
         "harness",
         "tests",
-        "vendor",
+        "include",
         "tools",
         "LICENSE",
     },
