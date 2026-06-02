@@ -8,9 +8,9 @@
 //! var kp = try oqs.kem.MlKem768.generateKeyPair(allocator);
 //! defer kp.public_key.deinit();
 //! defer kp.secret_key.deinit();
-//! var enc = try kp.public_key.encapsulate(allocator);
+//! var enc = try kp.public_key.encapsulate();
 //! defer enc.deinit();                 // send enc.ciphertext to the key holder
-//! var ss = try kp.secret_key.decapsulate(allocator, enc.ciphertext);
+//! var ss = try kp.secret_key.decapsulate(enc.ciphertext);
 //! defer ss.deinit();                  // ss.bytes == enc.shared_secret.bytes
 //! ```
 
@@ -88,15 +88,16 @@ pub fn Kem(comptime spec: KemInfo) type {
                 self.* = undefined;
             }
 
-            /// Generate a fresh shared secret encapsulated to this key.
-            pub fn encapsulate(self: PublicKey, allocator: std.mem.Allocator) OqsError!Encapsulation(SharedSecret) {
-                var k = try core_kem.init(allocator, spec.name);
+            /// Generate a fresh shared secret encapsulated to this key. Owned
+            /// memory is allocated with the key's allocator.
+            pub fn encapsulate(self: PublicKey) OqsError!Encapsulation(SharedSecret) {
+                var k = try core_kem.init(self.allocator, spec.name);
                 defer k.deinit();
                 const enc = try k.encaps(self.bytes);
                 return .{
-                    .allocator = allocator,
+                    .allocator = self.allocator,
                     .ciphertext = enc.ciphertext,
-                    .shared_secret = SharedSecret.fromOwned(allocator, enc.shared_secret),
+                    .shared_secret = SharedSecret.fromOwned(self.allocator, enc.shared_secret),
                 };
             }
         };
@@ -117,12 +118,13 @@ pub fn Kem(comptime spec: KemInfo) type {
                 self.* = undefined;
             }
 
-            /// Recover the shared secret from a ciphertext.
-            pub fn decapsulate(self: SecretKey, allocator: std.mem.Allocator, ciphertext: []const u8) OqsError!SharedSecret {
-                var k = try core_kem.init(allocator, spec.name);
+            /// Recover the shared secret from a ciphertext. Allocated with the
+            /// key's allocator.
+            pub fn decapsulate(self: SecretKey, ciphertext: []const u8) OqsError!SharedSecret {
+                var k = try core_kem.init(self.allocator, spec.name);
                 defer k.deinit();
                 const ss = try k.decaps(ciphertext, self.bytes);
-                return SharedSecret.fromOwned(allocator, ss);
+                return SharedSecret.fromOwned(self.allocator, ss);
             }
         };
 
@@ -201,12 +203,13 @@ pub fn Sig(comptime spec: SigInfo) type {
                 self.* = undefined;
             }
 
-            /// Sign `message`. Caller owns the returned signature.
-            pub fn sign(self: SecretKey, allocator: std.mem.Allocator, message: []const u8) OqsError!Signature {
-                var s = try core_sig.init(allocator, spec.name);
+            /// Sign `message`. Caller owns the returned signature, allocated
+            /// with the key's allocator.
+            pub fn sign(self: SecretKey, message: []const u8) OqsError!Signature {
+                var s = try core_sig.init(self.allocator, spec.name);
                 defer s.deinit();
                 const bytes = try s.sign(message, self.bytes);
-                return .{ .allocator = allocator, .bytes = bytes };
+                return .{ .allocator = self.allocator, .bytes = bytes };
             }
         };
 

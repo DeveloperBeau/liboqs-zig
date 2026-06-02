@@ -32,11 +32,19 @@ test "namespace round-trip via oqs.kem.MlKem768" {
     var kp = try oqs.kem.MlKem768.generateKeyPair(a);
     defer kp.public_key.deinit();
     defer kp.secret_key.deinit();
-    var enc = try kp.public_key.encapsulate(a);
+    var enc = try kp.public_key.encapsulate();
     defer enc.deinit();
-    var ss = try kp.secret_key.decapsulate(a, enc.ciphertext);
+    var ss = try kp.secret_key.decapsulate(enc.ciphertext);
     defer ss.deinit();
     try std.testing.expectEqualSlices(u8, enc.shared_secret.bytes, ss.bytes);
+}
+
+test "decapsulate rejects wrong-length ciphertext" {
+    const a = std.testing.allocator;
+    var kp = try oqs.kem.MlKem768.generateKeyPair(a);
+    defer kp.public_key.deinit();
+    defer kp.secret_key.deinit();
+    try std.testing.expectError(oqs.OqsError.InvalidKeySize, kp.secret_key.decapsulate(&[_]u8{ 1, 2, 3 }));
 }
 
 test "namespace sign/verify via oqs.sig.MlDsa65" {
@@ -44,10 +52,21 @@ test "namespace sign/verify via oqs.sig.MlDsa65" {
     var kp = try oqs.sig.MlDsa65.generateKeyPair(a);
     defer kp.public_key.deinit();
     defer kp.secret_key.deinit();
-    var s = try kp.secret_key.sign(a, "the quick brown fox");
+    var s = try kp.secret_key.sign("the quick brown fox");
     defer s.deinit();
     try std.testing.expect(try kp.public_key.isValidSignature("the quick brown fox", s.bytes));
     try std.testing.expect(!try kp.public_key.isValidSignature("tampered", s.bytes));
+}
+
+test "signature public key import round-trip and length validation" {
+    const a = std.testing.allocator;
+    var kp = try oqs.sig.MlDsa65.generateKeyPair(a);
+    defer kp.public_key.deinit();
+    defer kp.secret_key.deinit();
+    var imported = try oqs.sig.MlDsa65.PublicKey.fromBytes(a, kp.public_key.bytes);
+    defer imported.deinit();
+    try std.testing.expectEqualSlices(u8, kp.public_key.bytes, imported.bytes);
+    try std.testing.expectError(oqs.OqsError.InvalidKeySize, oqs.sig.MlDsa65.PublicKey.fromBytes(a, &[_]u8{ 9, 9 }));
 }
 
 test "public key import round-trip preserves bytes" {
