@@ -15,8 +15,43 @@ pub const kem = algorithms.kem;
 pub const sig = algorithms.sig;
 pub const SharedSecret = @import("keys.zig").SharedSecret;
 
-// Raw liboqs C symbols (e.g. for the registry gate's enabled-count checks).
-pub const c = @import("c.zig").c;
+const c = @import("c.zig").c;
+
+/// True if `name` is a KEM algorithm compiled into this build.
+pub fn isKemEnabled(name: [:0]const u8) bool {
+    init.ensure();
+    return c.OQS_KEM_alg_is_enabled(name.ptr) == 1;
+}
+
+/// True if `name` is a signature algorithm compiled into this build.
+pub fn isSigEnabled(name: [:0]const u8) bool {
+    init.ensure();
+    return c.OQS_SIG_alg_is_enabled(name.ptr) == 1;
+}
+
+/// Number of KEM algorithms compiled into this build.
+pub fn enabledKemCount() usize {
+    init.ensure();
+    var n: usize = 0;
+    var i: usize = 0;
+    const total: usize = @intCast(c.OQS_KEM_alg_count());
+    while (i < total) : (i += 1) {
+        if (c.OQS_KEM_alg_is_enabled(c.OQS_KEM_alg_identifier(i)) == 1) n += 1;
+    }
+    return n;
+}
+
+/// Number of signature algorithms compiled into this build.
+pub fn enabledSigCount() usize {
+    init.ensure();
+    var n: usize = 0;
+    var i: usize = 0;
+    const total: usize = @intCast(c.OQS_SIG_alg_count());
+    while (i < total) : (i += 1) {
+        if (c.OQS_SIG_alg_is_enabled(c.OQS_SIG_alg_identifier(i)) == 1) n += 1;
+    }
+    return n;
+}
 
 pub const testing = struct {
     pub const seedKat = @import("rng.zig").seedKat;

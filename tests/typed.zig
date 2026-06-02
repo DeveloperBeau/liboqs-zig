@@ -1,6 +1,5 @@
 const std = @import("std");
 const oqs = @import("oqs");
-const c = oqs.c; // raw liboqs symbols for the enabled-count gate
 
 // --- Registry gate ---------------------------------------------------------
 // Every generated wrapper must name a runtime-enabled algorithm, and the
@@ -8,46 +7,22 @@ const c = oqs.c; // raw liboqs symbols for the enabled-count gate
 // not-actually-compiled algorithm shipping silently — neither the smoke nor
 // parity tests would catch that.
 
-fn runtimeEnabledKemCount() usize {
-    var n: usize = 0;
-    var i: usize = 0;
-    const total: usize = @intCast(c.OQS_KEM_alg_count());
-    while (i < total) : (i += 1) {
-        if (c.OQS_KEM_alg_is_enabled(c.OQS_KEM_alg_identifier(i)) == 1) n += 1;
-    }
-    return n;
-}
-
-fn runtimeEnabledSigCount() usize {
-    var n: usize = 0;
-    var i: usize = 0;
-    const total: usize = @intCast(c.OQS_SIG_alg_count());
-    while (i < total) : (i += 1) {
-        if (c.OQS_SIG_alg_is_enabled(c.OQS_SIG_alg_identifier(i)) == 1) n += 1;
-    }
-    return n;
-}
-
 test "every KEM wrapper names a runtime-enabled algorithm" {
-    oqs.ensureInitialized();
     comptime var count: usize = 0;
     inline for (@typeInfo(oqs.kem).@"struct".decls) |d| {
-        const T = @field(oqs.kem, d.name);
-        try std.testing.expect(c.OQS_KEM_alg_is_enabled(T.info.name.ptr) == 1);
+        try std.testing.expect(oqs.isKemEnabled(@field(oqs.kem, d.name).info.name));
         count += 1;
     }
-    try std.testing.expectEqual(runtimeEnabledKemCount(), count);
+    try std.testing.expectEqual(oqs.enabledKemCount(), count);
 }
 
 test "every SIG wrapper names a runtime-enabled algorithm" {
-    oqs.ensureInitialized();
     comptime var count: usize = 0;
     inline for (@typeInfo(oqs.sig).@"struct".decls) |d| {
-        const T = @field(oqs.sig, d.name);
-        try std.testing.expect(c.OQS_SIG_alg_is_enabled(T.info.name.ptr) == 1);
+        try std.testing.expect(oqs.isSigEnabled(@field(oqs.sig, d.name).info.name));
         count += 1;
     }
-    try std.testing.expectEqual(runtimeEnabledSigCount(), count);
+    try std.testing.expectEqual(oqs.enabledSigCount(), count);
 }
 
 // --- Behavior via the public namespaces ------------------------------------
