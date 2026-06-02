@@ -27,6 +27,7 @@ fn parseFamilies(comptime raw: []const u8) []const []const u8 {
 /// generator does not know about).
 fn familyKind(comptime family: []const u8) []const u8 {
     comptime {
+        @setEvalBranchQuota(10000);
         for (manifest.algorithms) |entry| {
             if (std.mem.eql(u8, entry.family, family)) {
                 return switch (entry.kind) {

@@ -12,6 +12,8 @@ const kem_names = [_][:0]const u8{
     "Classic-McEliece-348864",
     "NTRU-HPS-2048-509",
     "sntrup761",
+    "Kyber768",
+    "FrodoKEM-640-AES",
 };
 
 const sig_names = [_][:0]const u8{
@@ -23,6 +25,7 @@ const sig_names = [_][:0]const u8{
     "Falcon-padded-1024",
     "SPHINCS+-SHA2-128f-simple",
     "cross-rsdp-128-balanced",
+    "SLH_DSA_PURE_SHA2_128F",
 };
 
 fn kemRoundTrip(name: [:0]const u8) !void {
