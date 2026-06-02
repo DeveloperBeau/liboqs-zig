@@ -7,7 +7,8 @@
 # shards) so a long run visibly advances. Usage: run-shards.sh <cref|zref>
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-bin="$1"
+bin="${1:-}"
+case "$bin" in cref | zref) ;; *) echo "usage: run-shards.sh <cref|zref>" >&2; exit 2 ;; esac
 N="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
