@@ -1,12 +1,14 @@
-name: CI
+name: main
 on:
-  pull_request:
+  push:
     branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: main-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   check:
@@ -30,9 +32,13 @@ jobs:
       - run: zig build test
 
   parity:
-    name: parity (ubuntu)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    name: parity (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -41,5 +47,20 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/zig
-          key: zig-ubuntu-latest-${{ hashFiles('build.zig.zon') }}
+          key: zig-${{ matrix.os }}-${{ hashFiles('build.zig.zon') }}
       - run: zig build parity
+
+  snapshot:
+    name: snapshot (macOS reference)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/zig
+          key: zig-macos-latest-${{ hashFiles('build.zig.zon') }}
+      - run: zig build snapshot

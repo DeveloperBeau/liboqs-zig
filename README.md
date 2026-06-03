@@ -72,7 +72,7 @@ The reference snapshot is frozen on macOS (arm64). Parity is self-consistent on 
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs build, `zig fmt --check`, and `zig build test` on macOS and Linux for every pull request, with parity on Linux. Pushes to `main` and a weekly schedule add full parity on both systems and the snapshot on macOS.
+`.github/workflows/ci.yml` runs on pull requests: build, `zig fmt --check`, and `zig build test` on macOS and Linux, plus parity on Linux. `.github/workflows/main.yml` runs on pushes to `main` and a weekly schedule: the same build/test on both systems, full parity on both, and the snapshot on macOS. Splitting by event keeps the heavier main-only jobs off the PR checklist.
 
 ## License
 
