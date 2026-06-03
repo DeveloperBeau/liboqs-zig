@@ -57,8 +57,8 @@ static void run_sig(const char *algo) {
     free(pk); free(sk); free(sig); OQS_SIG_free(s);
 }
 
-/* Every enabled algorithm is exercised with every operation — full coverage,
- * no reduced tier. The full set is slow (Classic McEliece keygen, SPHINCS+/
+/* Every enabled algorithm runs every operation for full coverage, with no
+ * reduced tier. The full set is slow (Classic McEliece keygen, SPHINCS+/
  * SLH-DSA signing), so the run is shardable for parallelism: OQS_SHARD /
  * OQS_TOTAL select the algorithms at combined-index % total == shard. Per-op
  * KAT re-seeding makes each algorithm's output independent of the shard split,

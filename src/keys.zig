@@ -1,8 +1,8 @@
 const std = @import("std");
 
-/// A shared secret established via KEM. Owns its bytes; `deinit` securely
-/// zeroes them before freeing. The bytes are symmetric-key material — feed
-/// `.bytes` to a symmetric cipher (e.g. AES, ChaCha20).
+/// A shared secret established via KEM. Owns its bytes; `deinit` zeroes them
+/// before freeing. The bytes are symmetric-key material. Feed `.bytes` to a
+/// symmetric cipher (e.g. AES, ChaCha20).
 pub const SharedSecret = struct {
     allocator: std.mem.Allocator,
     bytes: []u8,
@@ -28,8 +28,8 @@ test "deinit zeroes the secret" {
     // This test can only observe our secureZero in NON-safety builds. In safety
     // builds (Debug/ReleaseSafe) `Allocator.free` overwrites the freed region
     // with the 0xAA `undefined` poison *after* our secureZero runs, so the
-    // freed bytes are 0xAA regardless of whether we zeroed — the toolchain, not
-    // our code, would be under test. We therefore skip there and let the
+    // freed bytes are 0xAA regardless of whether we zeroed, which would test the
+    // toolchain rather than our code. We therefore skip there and let the
     // ReleaseFast run in build.zig be the real guard: it executes this exact
     // deinit path with no poison, so deleting secureZero from zeroAndFree makes
     // it fail (the bytes stay the original secret instead of zero).

@@ -1,6 +1,6 @@
-//! Parallel typed operations to surface data races / crashes. Uses the SYSTEM
-//! RNG only — never seedKat (the KAT DRBG is serial-only and process-global).
-//! Each worker uses the thread-safe smp_allocator.
+//! Parallel typed operations to surface data races or crashes. Uses the system
+//! RNG only and never calls seedKat (the KAT DRBG is serial-only and
+//! process-global). Each worker uses the thread-safe smp_allocator.
 const std = @import("std");
 const oqs = @import("oqs");
 

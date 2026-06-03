@@ -1,6 +1,6 @@
 //! Behavioral tests for the typed API under the system RNG. These assert API
-//! behavior (round-trip, uniqueness, length validation), not algorithm breadth
-//! — the registry gate, smoke, and parity cover breadth. This module must never
+//! behavior (round-trip, uniqueness, length validation), not algorithm breadth.
+//! The registry gate, smoke, and parity cover breadth. This module must never
 //! call seedKat: that flips a process-global DRBG pointer for the whole binary.
 const std = @import("std");
 const oqs = @import("oqs");
