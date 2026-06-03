@@ -135,6 +135,11 @@ pub fn build(b: *std.Build) void {
         "-std=c11",
         "-DOQS_DIST_BUILD=1",
         "-fno-sanitize=alignment",
+        // POSIX/GNU extensions liboqs relies on (posix_memalign, strdup, ...).
+        // Under -std=c11 (strict ISO) glibc hides these without a feature-test
+        // macro, so Linux fails with implicit-declaration errors; Darwin headers
+        // expose them regardless. liboqs' own CMake defines _GNU_SOURCE too.
+        "-D_GNU_SOURCE",
     };
 
     // --- common (portable, OpenSSL OFF) + dispatchers -----------------
