@@ -13,8 +13,8 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 echo "==> Freezing snapshot from C reference (cref), full coverage" >&2
 bash tools/run-shards.sh cref >"$tmp/cref.txt"
-# Pass data file as argv (python reads the script from the heredoc on stdin, so
-# the cref output cannot also be piped to stdin — open the file instead).
+# Pass the data file as argv. Python reads its script from the heredoc on stdin,
+# so the cref output cannot also be piped there. Open the file instead.
 python3 - "$OUT" "$tmp/cref.txt" <<'PY'
 import sys, hashlib, collections
 out_path, data_path = sys.argv[1], sys.argv[2]

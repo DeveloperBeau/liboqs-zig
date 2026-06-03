@@ -2,7 +2,7 @@ const std = @import("std");
 const c = @import("c.zig").c;
 
 // 0 = uninitialised, 1 = initialising (another thread is inside OQS_init),
-// 2 = done.  The release/acquire pair gives the happens-before guarantee
+// 2 = done. The release/acquire pair gives the happens-before guarantee
 // required by the "safe to call from any thread" contract.
 var state = std.atomic.Value(u8).init(0);
 

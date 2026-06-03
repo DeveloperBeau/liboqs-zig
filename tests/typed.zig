@@ -3,9 +3,9 @@ const oqs = @import("oqs");
 
 // --- Registry gate ---------------------------------------------------------
 // Every generated wrapper must name a runtime-enabled algorithm, and the
-// wrapper count must equal liboqs' enabled count. Catches a typo'd or
-// not-actually-compiled algorithm shipping silently — neither the smoke nor
-// parity tests would catch that.
+// wrapper count must equal liboqs' enabled count. This catches a typo'd or
+// not-actually-compiled algorithm that ships silently. The smoke and parity
+// tests would not.
 
 test "every KEM wrapper names a runtime-enabled algorithm" {
     comptime var count: usize = 0;

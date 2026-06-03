@@ -128,9 +128,6 @@ pub fn build(b: *std.Build) void {
     }
 
     // Base flags applied to every cliboqs C group.
-    // -fno-sanitize=alignment is library-wide: several PQClean impls do
-    // unaligned casts (e.g. uchar[] -> uint64_t* for GF arithmetic), safe on
-    // little-endian targets that tolerate unaligned loads but flagged by UBSan.
     const base_flags = [_][]const u8{
         "-std=c11",
         "-DOQS_DIST_BUILD=1",
@@ -260,10 +257,10 @@ pub fn build(b: *std.Build) void {
 
     // Secret-zeroing test, forced to ReleaseFast. In safety builds
     // (Debug/ReleaseSafe) Allocator.free poisons freed memory with 0xAA after
-    // our secureZero, so the zeroing is unobservable and that test skips. This
-    // ReleaseFast run is where the guarantee is actually exercised — without
-    // it, deleting the secureZero call would leave `zig build test` green.
-    // keys.zig only imports std, so this needs no cliboqs linkage.
+    // our secureZero, so the zeroing is unobservable and that test skips.
+    // ReleaseFast is where the guarantee holds, and where deleting the
+    // secureZero call turns `zig build test` red. keys.zig only imports std,
+    // so this needs no cliboqs linkage.
     const keys_release_mod = b.createModule(.{
         .root_source_file = b.path("src/keys.zig"),
         .target = target,
@@ -329,8 +326,8 @@ pub fn build(b: *std.Build) void {
 
     // ------------------------------------------------------------------
     // Parity gate: full-coverage byte-identical diff of cref vs zref.
-    // Script-driven (addSystemCommand) so the sharded harnesses' per-algorithm
-    // progress streams live to the terminal — a Zig test would buffer it and a
+    // Script-driven (addSystemCommand) so the sharded harnesses stream
+    // per-algorithm progress live. A Zig test would buffer it, and a
     // multi-minute run would look hung. See tools/parity.sh.
     // ------------------------------------------------------------------
     const run_parity = b.addSystemCommand(&.{ "bash", "tools/parity.sh" });

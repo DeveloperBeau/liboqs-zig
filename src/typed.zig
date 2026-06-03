@@ -1,7 +1,7 @@
 //! Compile-time-typed wrappers over the runtime KEM/SIG cores.
 //!
 //! Each algorithm is a distinct type, so keys of different algorithms cannot be
-//! mixed (compile error). Secret material is securely zeroed on `deinit`.
+//! mixed (compile error). Secret material is zeroed on `deinit`.
 //!
 //! ```zig
 //! const oqs = @import("oqs");

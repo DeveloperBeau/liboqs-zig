@@ -2,8 +2,8 @@
 # Snapshot gate: recompute per-algorithm SHA-256 digests from the Zig wrapper's
 # output (sharded, full coverage, live progress) and compare against the frozen
 # liboqs reference snapshot tests/snapshots/<LIBOQS_VERSION>.txt. A drift here
-# means liboqs output changed since the snapshot was frozen (e.g. a version bump)
-# — review, then re-run tools/freeze-snapshots.sh.
+# means liboqs output changed since the snapshot was frozen (e.g. a version
+# bump). Review the change, then re-run tools/freeze-snapshots.sh.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

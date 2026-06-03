@@ -1,4 +1,4 @@
-//! ZigOQS — safe Zig wrapper around liboqs.
+//! liboqs-zig: a safe Zig wrapper around liboqs.
 const init = @import("init.zig");
 
 pub const ensureInitialized = init.ensure;
