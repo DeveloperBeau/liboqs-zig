@@ -1,0 +1,70 @@
+name: Update liboqs
+on:
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: macos-latest # freeze the snapshot on the reference platform
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Check for a newer liboqs release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current="$(cat LIBOQS_VERSION)"
+          latest="$(gh api repos/open-quantum-safe/liboqs/releases/latest --jq .tag_name)"
+          echo "current=$current latest=$latest"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$latest" = "$current" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump and regenerate
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          latest="${{ steps.check.outputs.latest }}"
+          echo "$latest" > LIBOQS_VERSION
+          zig fetch --save=liboqs "https://github.com/open-quantum-safe/liboqs/archive/refs/tags/${latest}.tar.gz"
+          bash tools/gen-manifest.sh
+          bash tools/freeze-snapshots.sh
+
+      - name: Run all gates
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          zig build
+          zig build test
+          zig build parity
+          zig build snapshot
+
+      - name: Open pull request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: update-liboqs-${{ steps.check.outputs.latest }}
+          commit-message: "build: update liboqs to ${{ steps.check.outputs.latest }}"
+          title: "Update liboqs to ${{ steps.check.outputs.latest }}"
+          body: |
+            Automated dependency bump.
+
+            - `LIBOQS_VERSION` and the pinned `build.zig.zon` hash updated to `${{ steps.check.outputs.latest }}`.
+            - Regenerated `build/manifest.zig`, `include/oqs/oqsconfig.h`, `src/algorithms.zig`, and the reference snapshot.
+            - Build, test, parity, and snapshot gates passed on this runner.
+
+            Reviewer checklist:
+            - [ ] New algorithms (if any) appear in the registry and `oqsconfig.h`.
+            - [ ] Parity is byte-identical and the snapshot matches.
+            - [ ] No algorithm needed a toolchain-tied exclusion.
