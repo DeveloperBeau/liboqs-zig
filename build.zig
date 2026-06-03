@@ -134,7 +134,12 @@ pub fn build(b: *std.Build) void {
     const base_flags = [_][]const u8{
         "-std=c11",
         "-DOQS_DIST_BUILD=1",
-        "-fno-sanitize=alignment",
+        // Disable UBSan for the vendored liboqs C entirely. Several PQClean
+        // impls do benign UB on supported targets (unaligned u8[]->u64* casts in
+        // GF arithmetic; SLH-DSA's SHA2 trips a different check on x86 Debug than
+        // on arm64). Upstream compiles this C without sanitizers; trapping here
+        // just aborts otherwise-correct code, and it varies by target/host.
+        "-fno-sanitize=undefined",
         // POSIX/GNU extensions liboqs relies on (posix_memalign, strdup, ...).
         // Under -std=c11 (strict ISO) glibc hides these without a feature-test
         // macro, so Linux fails with implicit-declaration errors; Darwin headers
