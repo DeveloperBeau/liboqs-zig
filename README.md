@@ -2,16 +2,39 @@
 
 A safe Zig wrapper over [liboqs](https://github.com/open-quantum-safe/liboqs), the Open Quantum Safe library of post-quantum KEMs and signature schemes.
 
-liboqs is pulled in as a hash-pinned `build.zig.zon` dependency and compiled by `build.zig`, so a consumer only runs `zig build`. There is no vendored C in the repository and no system liboqs to install.
+`build.zig` fetches liboqs as a hash-pinned `build.zig.zon` dependency and compiles it, so you only run `zig build`. The repository carries no vendored C, and you install no system liboqs.
 
 ## Requirements
 
 - Zig 0.16.0
 - A C toolchain (Zig ships one; nothing else needed)
 
+## Add to your project
+
+Fetch the release and let Zig pin the hash:
+
+```sh
+zig fetch --save https://github.com/DeveloperBeau/liboqs-zig/archive/refs/tags/v0.1.0.tar.gz
+```
+
+That writes a `.liboqs_zig` entry into your `build.zig.zon`. Wire the `oqs` module into your build graph:
+
+```zig
+// build.zig
+const dep = b.dependency("liboqs_zig", .{
+    .target = target,
+    .optimize = optimize,
+});
+exe.root_module.addImport("oqs", dep.module("oqs"));
+```
+
+Now `@import("oqs")` works from your code. The module brings the compiled liboqs and its headers with it, so there is nothing else to install. The first build compiles the liboqs C slice (14 algorithm families), which takes a minute or two; later builds are cached.
+
+If you fetched an earlier, broken tag and now see a hash mismatch, delete the `.liboqs_zig` `.hash` line and re-run the `zig fetch --save` command above.
+
 ## Usage
 
-Add this repository as a dependency, then import the `oqs` module. The typed API gives each algorithm its own type, so a key from one algorithm cannot be passed where another's is expected. Secret keys and shared secrets zero their bytes on `deinit`.
+The typed API gives each algorithm its own type, so a key from one algorithm cannot be passed where another's is expected. Secret keys and shared secrets zero their bytes on `deinit`.
 
 ```zig
 const oqs = @import("oqs");
