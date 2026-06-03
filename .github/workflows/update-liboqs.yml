@@ -13,7 +13,7 @@ jobs:
     runs-on: macos-latest # freeze the snapshot on the reference platform
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
@@ -52,7 +52,7 @@ jobs:
 
       - name: Open pull request
         if: steps.check.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: update-liboqs-${{ steps.check.outputs.latest }}
           commit-message: "build: update liboqs to ${{ steps.check.outputs.latest }}"
