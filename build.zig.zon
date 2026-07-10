@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .liboqs = .{
-            .url = "https://github.com/open-quantum-safe/liboqs/archive/refs/tags/0.15.0.tar.gz",
-            .hash = "N-V-__8AAMKwnAj213yCr1-7zkInqKPRXLMSCCovScERxsof",
+            .url = "https://github.com/open-quantum-safe/liboqs/archive/refs/tags/0.16.0.tar.gz",
+            .hash = "N-V-__8AAFhxzQPmNx08CEgkPAGW_Ltjim-3JiFElyFzomb6",
         },
     },
     .paths = .{

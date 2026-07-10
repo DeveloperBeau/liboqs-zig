@@ -5,7 +5,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-LIBOQS_VERSION="$(tr -d ' \n' < LIBOQS_VERSION 2>/dev/null || echo 0.15.0)"
+LIBOQS_VERSION="$(tr -d ' \n' < LIBOQS_VERSION 2>/dev/null || echo 0.16.0)"
 zig build >/dev/null
 OUT="tests/snapshots/${LIBOQS_VERSION}.txt"
 mkdir -p "$(dirname "$OUT")"

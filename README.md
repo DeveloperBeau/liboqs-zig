@@ -30,6 +30,8 @@ exe.root_module.addImport("oqs", dep.module("oqs"));
 
 Now `@import("oqs")` works from your code. The module brings the compiled liboqs and its headers with it, so there is nothing else to install. The first build compiles the liboqs C slice (14 algorithm families), which takes a minute or two; later builds are cached.
 
+Wrapped liboqs version: 0.16.0. Note two upstream changes in that release: the `FrodoKEM-*` names now refer to the salted FrodoKEM variants (the 0.15 algorithms live on as `eFrodoKEM-*`, and ciphertext sizes differ between the two), and HQC was updated to the 2025-08-22 specification under new names (`HQC-1/3/5` replacing `HQC-128/192/256`). Ciphertexts and keys produced by 0.15-era builds do not interoperate across those changes.
+
 If you fetched an earlier, broken tag and now see a hash mismatch, delete the `.liboqs_zig` `.hash` line and re-run the `zig fetch --save` command above.
 
 ## Usage
@@ -58,7 +60,7 @@ defer sig.deinit();
 const ok = try sk.public_key.isValidSignature("message", sig.bytes);
 ```
 
-The wrappers (`oqs.kem.*`, `oqs.sig.*`) are generated from liboqs' own headers for every enabled algorithm: 32 KEMs and 209 signature variants, including the full SLH-DSA matrix. A runtime, name-based API (`oqs.Kem`, `oqs.Sig`) is also available.
+The wrappers (`oqs.kem.*`, `oqs.sig.*`) are generated from liboqs' own headers for every enabled algorithm: 38 KEMs and 209 signature variants, including the full SLH-DSA matrix. A runtime, name-based API (`oqs.Kem`, `oqs.Sig`) is also available.
 
 ## Build and test
 
@@ -69,7 +71,7 @@ zig build parity       # every algorithm: C reference vs Zig wrapper, byte-ident
 zig build snapshot     # wrapper output vs the frozen liboqs reference digests
 ```
 
-`parity` runs the full algorithm set, so it is slow (Classic McEliece keygen and SPHINCS+/SLH-DSA signing dominate). It shards across CPU cores and prints each algorithm as it goes, finishing with an OK or FAILED summary.
+`parity` runs the full algorithm set, so it is slow (Classic McEliece keygen and SLH-DSA signing dominate). It shards across CPU cores and prints each algorithm as it goes, finishing with an OK or FAILED summary.
 
 ## Which algorithms are built
 

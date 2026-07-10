@@ -7,7 +7,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-LIBOQS_VERSION="$(tr -d ' \n' < LIBOQS_VERSION 2>/dev/null || echo 0.15.0)"
+LIBOQS_VERSION="$(tr -d ' \n' < LIBOQS_VERSION 2>/dev/null || echo 0.16.0)"
 SNAP="tests/snapshots/${LIBOQS_VERSION}.txt"
 [ -f "$SNAP" ] || { echo "missing snapshot $SNAP; run tools/freeze-snapshots.sh" >&2; exit 1; }
 tmp="$(mktemp -d)"

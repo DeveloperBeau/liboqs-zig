@@ -16,9 +16,9 @@ falcon
 classic_mceliece
 ntru
 ntruprime
-sphincs
 cross
 kyber
 slh_dsa
 frodokem
 snova
+mqom
