@@ -14,7 +14,7 @@ A safe Zig wrapper over [liboqs](https://github.com/open-quantum-safe/liboqs), t
 Fetch the release and let Zig pin the hash:
 
 ```sh
-zig fetch --save https://github.com/DeveloperBeau/liboqs-zig/archive/refs/tags/v0.1.0.tar.gz
+zig fetch --save https://github.com/DeveloperBeau/liboqs-zig/archive/refs/tags/v0.16.0.tar.gz
 ```
 
 That writes a `.liboqs_zig` entry into your `build.zig.zon`. Wire the `oqs` module into your build graph:
