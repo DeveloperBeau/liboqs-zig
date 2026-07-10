@@ -57,7 +57,7 @@ pub const testing = struct {
     pub const seedKat = @import("rng.zig").seedKat;
 };
 
-pub const version = "0.0.0";
+pub const version = "0.16.0";
 
 test {
     _ = init;

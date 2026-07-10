@@ -1,6 +1,6 @@
 .{
     .name = .liboqs_zig,
-    .version = "0.1.0",
+    .version = "0.16.0",
     .fingerprint = 0xe44cb2a1ed91acb6,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
