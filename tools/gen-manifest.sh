@@ -282,7 +282,7 @@ class Algo:
         self.includes = includes
 
 
-SKIP_FAMILIES = {"uov"}
+SKIP_FAMILIES = set()
 # Families with non-PQClean shapes handled by dedicated logic.
 SPECIAL = {"frodokem", "slh_dsa", "bike"}
 
@@ -417,7 +417,8 @@ def parse_bike(kem_table):
                     "try_compile(VPCLMUL) branches and the top-level "
                     "-Wno-missing-braces/-Wno-missing-field-initializers "
                     "suppressions are not modeled; emitted DISABLE_VPCLMUL. "
-                    "BIKE may be x86-only; next task's smoke test will confirm.")
+                    "Portable C confirmed on arm64/x86_64; upstream supports "
+                    "64-bit little-endian only (no Windows/32-bit/big-endian).")
 
 
 kem_table = alg_name_table(os.path.join(SRC, "kem", "kem.h"), "OQS_KEM_alg_")
@@ -561,8 +562,6 @@ for gf in guard_files:
 
 def keep(macro):
     low = macro.lower()
-    if "uov" in low:
-        return False
     if "_stfl_" in low or "xmss" in low or "lms" in low:
         return False
     # strip OQS_ENABLE_KEM_ / OQS_ENABLE_SIG_
@@ -597,7 +596,7 @@ cfg.append("// kem/sig dispatchers (kem.c/sig.c) reference OQS_*_<alg>_new() und
 cfg.append("// OQS_ENABLE_* guards, and kem.h/sig.h #include the per-family umbrella headers")
 cfg.append("// under the family-level guards. Enabling a family here without compiling it")
 cfg.append("// (or vice versa) breaks the build.")
-cfg.append("// UOV (needs OpenSSL), stateful signatures, and optimized backends excluded.")
+cfg.append("// Stateful signatures (XMSS/LMS) and optimized backends excluded.")
 cfg.append("")
 cfg.append("#ifndef OQS_OQSCONFIG_H")
 cfg.append("#define OQS_OQSCONFIG_H")
@@ -630,8 +629,8 @@ cfg.append("// --- SIGs ---")
 for m in sig_macros:
     cfg.append("#define %s 1" % m)
 cfg.append("")
-cfg.append("// Families not listed in build/enabled-families.txt, plus UOV (requires")
-cfg.append("// OpenSSL) and stateful signatures (XMSS/LMS), are intentionally left")
+cfg.append("// Families not listed in build/enabled-families.txt, plus stateful")
+cfg.append("// signatures (XMSS/LMS), are intentionally left")
 cfg.append("// undefined until they are compiled.")
 cfg.append("")
 cfg.append("#endif // OQS_OQSCONFIG_H")

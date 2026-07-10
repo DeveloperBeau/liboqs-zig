@@ -200,6 +200,15 @@ pub fn build(b: *std.Build) void {
         flags.appendSlice(b.allocator, &base_flags) catch @panic("OOM");
         for (entry.flags) |flag| {
             if (flag.macos_only and !is_macos) continue;
+            // "-include <file>" flags carry a path relative to liboqs src/;
+            // resolve it so clang (and Zig's cache hashing) can find the file.
+            if (std.mem.startsWith(u8, flag.text, "-include ")) {
+                const rel = flag.text["-include ".len..];
+                flags.append(b.allocator, "-include") catch @panic("OOM");
+                const abs = liboqs.path(b.fmt("src/{s}", .{rel})).getPath(b);
+                flags.append(b.allocator, abs) catch @panic("OOM");
+                continue;
+            }
             flags.append(b.allocator, flag.text) catch @panic("OOM");
         }
         for (entry.includes) |inc| {

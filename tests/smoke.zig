@@ -15,6 +15,7 @@ const kem_names = [_][:0]const u8{
     "Kyber768",
     "FrodoKEM-640-AES",
     "eFrodoKEM-640-AES",
+    "BIKE-L1",
 };
 
 const sig_names = [_][:0]const u8{
@@ -28,6 +29,7 @@ const sig_names = [_][:0]const u8{
     "mqom2_cat1_gf16_fast_r3",
     "SLH_DSA_PURE_SHA2_128F",
     "SNOVA_24_5_4",
+    "OV-Is",
 };
 
 fn kemRoundTrip(name: [:0]const u8) !void {

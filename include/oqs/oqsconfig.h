@@ -7,7 +7,7 @@
 // OQS_ENABLE_* guards, and kem.h/sig.h #include the per-family umbrella headers
 // under the family-level guards. Enabling a family here without compiling it
 // (or vice versa) breaks the build.
-// UOV (needs OpenSSL), stateful signatures, and optimized backends excluded.
+// Stateful signatures (XMSS/LMS) and optimized backends excluded.
 
 #ifndef OQS_OQSCONFIG_H
 #define OQS_OQSCONFIG_H
@@ -32,6 +32,7 @@
 #define OQS_LIBJADE_BUILD 0
 
 // --- KEMs ---
+#define OQS_ENABLE_KEM_BIKE 1
 #define OQS_ENABLE_KEM_CLASSIC_MCELIECE 1
 #define OQS_ENABLE_KEM_FRODOKEM 1
 #define OQS_ENABLE_KEM_HQC 1
@@ -39,6 +40,9 @@
 #define OQS_ENABLE_KEM_ML_KEM 1
 #define OQS_ENABLE_KEM_NTRU 1
 #define OQS_ENABLE_KEM_NTRUPRIME 1
+#define OQS_ENABLE_KEM_bike_l1 1
+#define OQS_ENABLE_KEM_bike_l3 1
+#define OQS_ENABLE_KEM_bike_l5 1
 #define OQS_ENABLE_KEM_classic_mceliece_348864 1
 #define OQS_ENABLE_KEM_classic_mceliece_348864f 1
 #define OQS_ENABLE_KEM_classic_mceliece_460896 1
@@ -86,6 +90,7 @@
 #define OQS_ENABLE_SIG_MQOM 1
 #define OQS_ENABLE_SIG_SLH_DSA 1
 #define OQS_ENABLE_SIG_SNOVA 1
+#define OQS_ENABLE_SIG_UOV 1
 #define OQS_ENABLE_SIG_cross_rsdp_128_balanced 1
 #define OQS_ENABLE_SIG_cross_rsdp_128_fast 1
 #define OQS_ENABLE_SIG_cross_rsdp_128_small 1
@@ -295,9 +300,21 @@
 #define OQS_ENABLE_SIG_snova_SNOVA_49_11_3 1
 #define OQS_ENABLE_SIG_snova_SNOVA_56_25_2 1
 #define OQS_ENABLE_SIG_snova_SNOVA_60_10_4 1
+#define OQS_ENABLE_SIG_uov_ov_III 1
+#define OQS_ENABLE_SIG_uov_ov_III_pkc 1
+#define OQS_ENABLE_SIG_uov_ov_III_pkc_skc 1
+#define OQS_ENABLE_SIG_uov_ov_Ip 1
+#define OQS_ENABLE_SIG_uov_ov_Ip_pkc 1
+#define OQS_ENABLE_SIG_uov_ov_Ip_pkc_skc 1
+#define OQS_ENABLE_SIG_uov_ov_Is 1
+#define OQS_ENABLE_SIG_uov_ov_Is_pkc 1
+#define OQS_ENABLE_SIG_uov_ov_Is_pkc_skc 1
+#define OQS_ENABLE_SIG_uov_ov_V 1
+#define OQS_ENABLE_SIG_uov_ov_V_pkc 1
+#define OQS_ENABLE_SIG_uov_ov_V_pkc_skc 1
 
-// Families not listed in build/enabled-families.txt, plus UOV (requires
-// OpenSSL) and stateful signatures (XMSS/LMS), are intentionally left
+// Families not listed in build/enabled-families.txt, plus stateful
+// signatures (XMSS/LMS), are intentionally left
 // undefined until they are compiled.
 
 #endif // OQS_OQSCONFIG_H

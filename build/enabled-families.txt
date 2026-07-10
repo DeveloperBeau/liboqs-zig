@@ -22,3 +22,5 @@ slh_dsa
 frodokem
 snova
 mqom
+bike
+uov

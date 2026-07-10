@@ -5,6 +5,9 @@ const typed = @import("typed.zig");
 
 /// Key encapsulation mechanisms.
 pub const kem = struct {
+    pub const BikeL1 = typed.Kem(.{ .name = "BIKE-L1", .public_key = 1541, .secret_key = 5223, .ciphertext = 1573, .shared_secret = 32 });
+    pub const BikeL3 = typed.Kem(.{ .name = "BIKE-L3", .public_key = 3083, .secret_key = 10105, .ciphertext = 3115, .shared_secret = 32 });
+    pub const BikeL5 = typed.Kem(.{ .name = "BIKE-L5", .public_key = 5122, .secret_key = 16494, .ciphertext = 5154, .shared_secret = 32 });
     pub const ClassicMceliece348864 = typed.Kem(.{ .name = "Classic-McEliece-348864", .public_key = 261120, .secret_key = 6492, .ciphertext = 96, .shared_secret = 32 });
     pub const ClassicMceliece348864f = typed.Kem(.{ .name = "Classic-McEliece-348864f", .public_key = 261120, .secret_key = 6492, .ciphertext = 96, .shared_secret = 32 });
     pub const ClassicMceliece460896 = typed.Kem(.{ .name = "Classic-McEliece-460896", .public_key = 524160, .secret_key = 13608, .ciphertext = 156, .shared_secret = 32 });
@@ -256,4 +259,16 @@ pub const sig = struct {
     pub const SnovaSNOVA49113 = typed.Sig(.{ .name = "SNOVA_49_11_3", .public_key = 6006, .secret_key = 48, .signature_max = 286 });
     pub const SnovaSNOVA56252 = typed.Sig(.{ .name = "SNOVA_56_25_2", .public_key = 31266, .secret_key = 48, .signature_max = 178 });
     pub const SnovaSNOVA60104 = typed.Sig(.{ .name = "SNOVA_60_10_4", .public_key = 8016, .secret_key = 48, .signature_max = 576 });
+    pub const UovOvIII = typed.Sig(.{ .name = "OV-III", .public_key = 1225440, .secret_key = 1044320, .signature_max = 200 });
+    pub const UovOvIIIPkc = typed.Sig(.{ .name = "OV-III-pkc", .public_key = 189232, .secret_key = 1044320, .signature_max = 200 });
+    pub const UovOvIIIPkcSkc = typed.Sig(.{ .name = "OV-III-pkc-skc", .public_key = 189232, .secret_key = 32, .signature_max = 200 });
+    pub const UovOvIp = typed.Sig(.{ .name = "OV-Ip", .public_key = 278432, .secret_key = 237896, .signature_max = 128 });
+    pub const UovOvIpPkc = typed.Sig(.{ .name = "OV-Ip-pkc", .public_key = 43576, .secret_key = 237896, .signature_max = 128 });
+    pub const UovOvIpPkcSkc = typed.Sig(.{ .name = "OV-Ip-pkc-skc", .public_key = 43576, .secret_key = 32, .signature_max = 128 });
+    pub const UovOvIs = typed.Sig(.{ .name = "OV-Is", .public_key = 412160, .secret_key = 348704, .signature_max = 96 });
+    pub const UovOvIsPkc = typed.Sig(.{ .name = "OV-Is-pkc", .public_key = 66576, .secret_key = 348704, .signature_max = 96 });
+    pub const UovOvIsPkcSkc = typed.Sig(.{ .name = "OV-Is-pkc-skc", .public_key = 66576, .secret_key = 32, .signature_max = 96 });
+    pub const UovOvV = typed.Sig(.{ .name = "OV-V", .public_key = 2869440, .secret_key = 2436704, .signature_max = 260 });
+    pub const UovOvVPkc = typed.Sig(.{ .name = "OV-V-pkc", .public_key = 446992, .secret_key = 2436704, .signature_max = 260 });
+    pub const UovOvVPkcSkc = typed.Sig(.{ .name = "OV-V-pkc-skc", .public_key = 446992, .secret_key = 32, .signature_max = 260 });
 };
