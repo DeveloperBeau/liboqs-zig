@@ -3,11 +3,13 @@
 # from the liboqs CMake metadata and headers for the version pinned in
 # LIBOQS_VERSION.
 #
-# This is a regen-time tool: it downloads the upstream liboqs tarball into a
-# temp dir (independent of zig's package cache), parses each family's
-# CMakeLists.txt for its PORTABLE OBJECT targets, and emits a checked-in Zig
-# manifest, an oqsconfig.h scoped to build/enabled-families.txt, and the typed
-# wrappers. It is idempotent: re-running produces byte-identical output.
+# This is a regen-time tool: it fetches the upstream liboqs tarball through
+# `zig fetch` (verifying its content hash against the build.zig.zon pin, so
+# the manifest is generated from exactly the bytes the build compiles), parses
+# each family's CMakeLists.txt for its PORTABLE OBJECT targets, and emits a
+# checked-in Zig manifest, an oqsconfig.h scoped to build/enabled-families.txt,
+# and the typed wrappers. It is idempotent: re-running produces byte-identical
+# output.
 #
 # Usage: bash tools/gen-manifest.sh
 set -euo pipefail
@@ -18,10 +20,17 @@ VERSION="$(cat "$ROOT/LIBOQS_VERSION")"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-echo "Downloading liboqs $VERSION ..." >&2
-curl -sL "https://github.com/open-quantum-safe/liboqs/archive/refs/tags/$VERSION.tar.gz" \
-  | tar -xz -C "$TMP"
-SRC="$TMP/liboqs-$VERSION/src"
+echo "Fetching liboqs $VERSION (content-hash verified by zig fetch) ..." >&2
+HASH="$(zig fetch "https://github.com/open-quantum-safe/liboqs/archive/refs/tags/$VERSION.tar.gz")"
+PINNED="$(sed -n 's/.*\.hash = "\([^"]*\)".*/\1/p' "$ROOT/build.zig.zon")"
+if [ "$HASH" != "$PINNED" ]; then
+  echo "error: fetched liboqs hash $HASH does not match the build.zig.zon pin $PINNED" >&2
+  echo "       (run: zig fetch --save=liboqs <tarball-url> to update the pin)" >&2
+  exit 1
+fi
+GLOBAL_CACHE="$(zig env | sed -n 's/^ *\.global_cache_dir = "\(.*\)",$/\1/p')"
+tar -xzf "$GLOBAL_CACHE/p/$HASH.tar.gz" -C "$TMP"
+SRC="$TMP/$HASH/src"
 [ -d "$SRC" ] || { echo "error: $SRC not found after extraction" >&2; exit 1; }
 
 mkdir -p "$ROOT/build"
@@ -33,15 +42,18 @@ VERSION = os.environ["VERSION"]
 SRC = os.environ["SRC"]
 ROOT = os.environ["ROOT"]
 
-PORTABLE_SUFFIXES = ("_clean", "_ref", "_opt")
+PORTABLE_SUFFIXES = ("_clean", "_ref", "_opt", "_openssh", "_default")
 # Optimized backends / non-portable target suffixes that must be skipped.
 OPT_SUFFIXES = ("_avx2", "_avx512", "_neon", "_aarch64", "_x86_64",
                 "_cuda", "_icicle_cuda", "_icicle")
 ASM_EXT = (".S", ".s", ".asm")
 
 # FrodoKEM files that are textually #include'd into the per-variant glue and
-# must never be compiled standalone.
-FRODO_EXCLUDE = re.compile(r"(frodo_macrify_.*\.c$)|(external/(noise|util|kem)\.c$)")
+# must never be compiled standalone. As of 0.16.0 the CMake SRCS lists no
+# longer contain them (they moved under external/{frodo,efrodo}/), so this is
+# a guard against a future liboqs re-adding shared files to SRCS.
+FRODO_EXCLUDE = re.compile(
+    r"(frodo_macrify_.*\.c$)|(external/(e?frodo/)?(noise|util|kem)\.c$)")
 
 
 def read(path):
@@ -270,7 +282,7 @@ class Algo:
         self.includes = includes
 
 
-SKIP_FAMILIES = {"uov"}
+SKIP_FAMILIES = set()
 # Families with non-PQClean shapes handled by dedicated logic.
 SPECIAL = {"frodokem", "slh_dsa", "bike"}
 
@@ -319,7 +331,7 @@ def parse_frodokem(kem_table):
     family_rel = "kem/frodokem"
     # Each variant is its own if(OQS_ENABLE_KEM_frodokem_*) set(SRCS ...) block.
     for guard, body in split_if_blocks(text):
-        gm = re.match(r"OQS_ENABLE_KEM_(frodokem_[A-Za-z0-9_]+)\s*$", guard.strip())
+        gm = re.match(r"OQS_ENABLE_KEM_(e?frodokem_[A-Za-z0-9_]+)\s*$", guard.strip())
         if not gm:
             continue
         variant = gm.group(1)
@@ -405,7 +417,8 @@ def parse_bike(kem_table):
                     "try_compile(VPCLMUL) branches and the top-level "
                     "-Wno-missing-braces/-Wno-missing-field-initializers "
                     "suppressions are not modeled; emitted DISABLE_VPCLMUL. "
-                    "BIKE may be x86-only; next task's smoke test will confirm.")
+                    "Portable C confirmed on arm64/x86_64; upstream supports "
+                    "64-bit little-endian only (no Windows/32-bit/big-endian).")
 
 
 kem_table = alg_name_table(os.path.join(SRC, "kem", "kem.h"), "OQS_KEM_alg_")
@@ -531,6 +544,12 @@ def read_enabled_families():
 
 enabled_families = read_enabled_families()
 
+# Macro-name prefixes covered by the enabled families. efrodokem (ephemeral
+# FrodoKEM, 0.16.0+) lives in the frodokem family dir and rides its enable.
+family_prefixes = list(enabled_families)
+if "frodokem" in enabled_families:
+    family_prefixes.append("efrodokem")
+
 guard_files = [
     os.path.join(SRC, "kem", "kem.c"), os.path.join(SRC, "kem", "kem.h"),
     os.path.join(SRC, "sig", "sig.c"), os.path.join(SRC, "sig", "sig.h"),
@@ -543,8 +562,6 @@ for gf in guard_files:
 
 def keep(macro):
     low = macro.lower()
-    if "uov" in low:
-        return False
     if "_stfl_" in low or "xmss" in low or "lms" in low:
         return False
     # strip OQS_ENABLE_KEM_ / OQS_ENABLE_SIG_
@@ -554,7 +571,7 @@ def keep(macro):
     # family name) and per-variant macros (family + "_" prefix). The "_"
     # guard prevents a family from matching a longer family's prefix.
     if not any(tail_low == fam or tail_low.startswith(fam + "_")
-               for fam in enabled_families):
+               for fam in family_prefixes):
         return False
     # Umbrella macros are all-uppercase family names: keep.
     if tail == tail.upper():
@@ -579,7 +596,7 @@ cfg.append("// kem/sig dispatchers (kem.c/sig.c) reference OQS_*_<alg>_new() und
 cfg.append("// OQS_ENABLE_* guards, and kem.h/sig.h #include the per-family umbrella headers")
 cfg.append("// under the family-level guards. Enabling a family here without compiling it")
 cfg.append("// (or vice versa) breaks the build.")
-cfg.append("// UOV (needs OpenSSL), stateful signatures, and optimized backends excluded.")
+cfg.append("// Stateful signatures (XMSS/LMS) and optimized backends excluded.")
 cfg.append("")
 cfg.append("#ifndef OQS_OQSCONFIG_H")
 cfg.append("#define OQS_OQSCONFIG_H")
@@ -612,8 +629,8 @@ cfg.append("// --- SIGs ---")
 for m in sig_macros:
     cfg.append("#define %s 1" % m)
 cfg.append("")
-cfg.append("// Families not listed in build/enabled-families.txt, plus UOV (requires")
-cfg.append("// OpenSSL) and stateful signatures (XMSS/LMS), are intentionally left")
+cfg.append("// Families not listed in build/enabled-families.txt, plus stateful")
+cfg.append("// signatures (XMSS/LMS), are intentionally left")
 cfg.append("// undefined until they are compiled.")
 cfg.append("")
 cfg.append("#endif // OQS_OQSCONFIG_H")
