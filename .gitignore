@@ -5,3 +5,10 @@ zig-cache/
 zig-out/
 zig-pkg/
 *.local.md
+
+# Agent tooling / local-only
+.claude/
+.claire/
+CLAUDE.local.md
+skills-lock.json
+.agents/
