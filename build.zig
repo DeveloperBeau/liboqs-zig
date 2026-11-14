@@ -306,6 +306,17 @@ pub fn build(b: *std.Build) void {
     const run_concurrency_tests = b.addRunArtifact(concurrency_tests);
     test_step.dependOn(&run_concurrency_tests.step);
 
+    // Stateful signature tests (system RNG, never seeds KAT).
+    const sig_stfl_mod = b.createModule(.{
+        .root_source_file = b.path("tests/sig_stfl.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    sig_stfl_mod.addImport("oqs", oqs_mod);
+    const sig_stfl_tests = b.addTest(.{ .root_module = sig_stfl_mod });
+    const run_sig_stfl_tests = b.addRunArtifact(sig_stfl_tests);
+    test_step.dependOn(&run_sig_stfl_tests.step);
+
     // ------------------------------------------------------------------
     // C reference harness: cref
     // ------------------------------------------------------------------
