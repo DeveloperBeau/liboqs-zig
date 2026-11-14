@@ -12,6 +12,7 @@
 //! XMSS exhaustion test uses XMSS-SHA2_10_256, the lowest XMSS height.
 const std = @import("std");
 const oqs = @import("oqs");
+const build_options = @import("build_options");
 
 // All 70 stateful variants that liboqs 0.16.0 defines, written out by hand.
 const stfl_names = [_][:0]const u8{
@@ -313,11 +314,11 @@ test "a secret key state from another algorithm returns InvalidKeySize and is no
     try std.testing.expectEqual(@as(u64, 31), try lms.sig.sigsRemaining(lms.secret_key));
 }
 
-// The seed is fixed so a failure reproduces. It is in the test name, and every
-// failure message prints it. A passing run prints nothing, because zig build
-// reports any stderr output from a test binary as a failed command.
-test "fuzz (seed 0x5717f022): mutated signatures and messages are rejected and the valid pair is always accepted" {
-    const seed: u64 = 0x5717_F022;
+// The seed is fixed by build.zig (default 0x5717f022, override with
+// -Dfuzz-seed=N) so a failure reproduces. `zig build test --summary all` shows
+// it in the name of this binary's run step, and every failure message prints it.
+test "fuzz with a seed from the build: mutated signatures and messages are rejected and the valid pair is always accepted" {
+    const seed: u64 = build_options.fuzz_seed;
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
     const rounds = 48;

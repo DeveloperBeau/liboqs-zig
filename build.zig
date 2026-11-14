@@ -313,8 +313,17 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     sig_stfl_mod.addImport("oqs", oqs_mod);
+    // The fuzz test's seed comes from here, and the run step carries it in its
+    // name, so `zig build test --summary all` shows it on a passing run. A test
+    // that writes to stderr is reported as a failed command, so the test
+    // itself prints the seed only when it fails.
+    const fuzz_seed = b.option(u64, "fuzz-seed", "Seed for the stateful signature fuzz test") orelse 0x5717_F022;
+    const sig_stfl_options = b.addOptions();
+    sig_stfl_options.addOption(u64, "fuzz_seed", fuzz_seed);
+    sig_stfl_mod.addOptions("build_options", sig_stfl_options);
     const sig_stfl_tests = b.addTest(.{ .root_module = sig_stfl_mod });
     const run_sig_stfl_tests = b.addRunArtifact(sig_stfl_tests);
+    run_sig_stfl_tests.setName(b.fmt("run sig_stfl tests (fuzz seed 0x{x})", .{fuzz_seed}));
     test_step.dependOn(&run_sig_stfl_tests.step);
 
     // ------------------------------------------------------------------
