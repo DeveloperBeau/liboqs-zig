@@ -66,18 +66,21 @@ pub const SigStfl = struct {
     ///
     /// The advanced state stays in memory inside `secret_key`. Nothing is written
     /// to storage. Returns `InvalidKeySize` if `secret_key` belongs to another
-    /// algorithm, and `SignFailed` once `sigsRemaining` is 0. liboqs itself would
-    /// still sign at that point (with wiped key material for XMSS), so the count
-    /// is checked first.
+    /// algorithm. liboqs decides when a key is used up. As in liboqs, one key
+    /// makes `sigsTotal` + 1 signatures, and the last one is made when
+    /// `sigsRemaining` is already 0. For XMSS that last signature uses wiped key
+    /// material, so it does not verify. After it, the next `sign` returns
+    /// `SignFailed` and no signature.
     pub fn sign(self: SigStfl, message: []const u8, secret_key: *SigStflSecretKey) OqsError![]u8 {
         if (!self.owns(secret_key.*)) return OqsError.InvalidKeySize;
-        const remaining = self.sigsRemaining(secret_key.*) catch return OqsError.SignFailed;
-        if (remaining == 0) return OqsError.SignFailed;
         const buf = try self.allocator.alloc(u8, self.lengthSignatureMax());
         defer self.allocator.free(buf);
         var sig_len: usize = 0;
         if (c.OQS_SIG_STFL_sign(self.handle, buf.ptr, &sig_len, message.ptr, message.len, secret_key.handle) != c.OQS_SUCCESS)
             return OqsError.SignFailed;
+        // On a used-up LMS key liboqs returns success without writing a
+        // signature, so no length means no signature.
+        if (sig_len == 0) return OqsError.SignFailed;
         const out = try self.allocator.alloc(u8, sig_len);
         @memcpy(out, buf[0..sig_len]);
         return out;
@@ -91,10 +94,11 @@ pub const SigStfl = struct {
         return c.OQS_SIG_STFL_verify(self.handle, message.ptr, message.len, signature.ptr, signature.len, public_key.ptr) == c.OQS_SUCCESS;
     }
 
-    /// The number of signatures `secret_key` can still make.
+    /// The number of signatures `secret_key` can still make, as liboqs counts it.
     ///
     /// Returns `InvalidKeySize` if `secret_key` belongs to another algorithm or
-    /// liboqs cannot read it.
+    /// liboqs cannot read it. After the last signature, liboqs can no longer
+    /// read an LMS key, and an XMSS count wraps to the largest u64.
     pub fn sigsRemaining(self: SigStfl, secret_key: SigStflSecretKey) OqsError!u64 {
         if (!self.owns(secret_key)) return OqsError.InvalidKeySize;
         var remaining: c_ulonglong = 0;

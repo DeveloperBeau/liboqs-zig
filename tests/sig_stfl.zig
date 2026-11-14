@@ -7,8 +7,9 @@
 //! signing stay fast in Debug builds. XMSS-SHA2_10_256 is the lowest XMSS
 //! height. XMSSMT-SHA2_20/4_256 splits its height into four layers of 5, so
 //! keygen builds only small trees. LMS_SHA256_H5_W8 is the lowest LMS height.
-//! The exhaustion test uses LMS_SHA256_H5_W1, because liboqs rebuilds the
-//! LMS tree on every signature and Winternitz 1 makes that the cheapest.
+//! The LMS exhaustion test uses LMS_SHA256_H5_W1, because liboqs rebuilds the
+//! LMS tree on every signature and Winternitz 1 makes that the cheapest. The
+//! XMSS exhaustion test uses XMSS-SHA2_10_256, the lowest XMSS height.
 const std = @import("std");
 const oqs = @import("oqs");
 
@@ -195,24 +196,63 @@ test "sigsTotal is 2^h - 1 and sigsRemaining drops by exactly one per signature"
     }
 }
 
-test "LMS_SHA256_H5_W1 signs 31 times, then sign fails with SignFailed and sigsRemaining stays 0" {
+// liboqs makes sigsTotal + 1 signatures per key. The last one is made when
+// sigsRemaining already reads 0. The expected values below are what liboqs
+// 0.16.0 does through this wrapper, checked by hand before they were written.
+test "LMS_SHA256_H5_W1 makes 32 signatures, the 32nd at sigsRemaining 0 verifies, then the counts are unreadable and sign fails with SignFailed" {
     var f = try Fixture.init(lms_h5_w1.name);
     defer f.deinit();
     try std.testing.expectEqual(lms_h5_w1.signature, f.sig.lengthSignatureMax());
     var i: u64 = 0;
-    while (i < 31) : (i += 1) {
-        try std.testing.expectEqual(lms_h5_w1.sigs_total - i, try f.sig.sigsRemaining(f.secret_key));
+    while (i < 32) : (i += 1) {
+        // Reads 31, 30, ..., 1, 0 before each signature.
+        try std.testing.expectEqual(31 - i, try f.sig.sigsRemaining(f.secret_key));
+        try std.testing.expectEqual(@as(u64, 31), try f.sig.sigsTotal(f.secret_key));
+        const s = try f.sig.sign(message, &f.secret_key);
+        defer std.testing.allocator.free(s);
+        try std.testing.expectEqual(@as(usize, 8688), s.len);
+        try std.testing.expect(try f.sig.verify(message, s, f.public_key));
+    }
+    // After the 32nd signature hash-sigs fills the private key with 0xFF, and
+    // liboqs can no longer read either count from it.
+    try std.testing.expectError(oqs.OqsError.InvalidKeySize, f.sig.sigsRemaining(f.secret_key));
+    try std.testing.expectError(oqs.OqsError.InvalidKeySize, f.sig.sigsTotal(f.secret_key));
+    // liboqs reports success here without writing a signature. The wrapper
+    // turns that into SignFailed. An error union carries no slice, and
+    // std.testing.allocator fails the test on any leaked signature buffer.
+    try std.testing.expectError(oqs.OqsError.SignFailed, f.sig.sign(message, &f.secret_key));
+    try std.testing.expectError(oqs.OqsError.SignFailed, f.sig.sign(message, &f.secret_key));
+    try std.testing.expectError(oqs.OqsError.InvalidKeySize, f.sig.sigsRemaining(f.secret_key));
+}
+
+test "XMSS-SHA2_10_256 makes 1024 signatures, the 1024th at sigsRemaining 0 does not verify, sigsRemaining then wraps to 2^64 - 1, and the next sign fails with SignFailed" {
+    var f = try Fixture.init(xmss_h10.name);
+    defer f.deinit();
+    var i: u64 = 0;
+    while (i < 1023) : (i += 1) {
+        // Reads 1023, 1022, ..., 1 before each signature.
+        try std.testing.expectEqual(1023 - i, try f.sig.sigsRemaining(f.secret_key));
         const s = try f.sig.sign(message, &f.secret_key);
         defer std.testing.allocator.free(s);
         try std.testing.expect(try f.sig.verify(message, s, f.public_key));
     }
     try std.testing.expectEqual(@as(u64, 0), try f.sig.sigsRemaining(f.secret_key));
-    // An error union carries no slice, and std.testing.allocator fails the
-    // test on any leaked signature buffer.
+    try std.testing.expectEqual(@as(u64, 1023), try f.sig.sigsTotal(f.secret_key));
+
+    // At the last index liboqs wipes the key and signs with the zeroed seeds.
+    // Checked against liboqs 0.16.0: that signature has the full length and
+    // does not verify under the public key.
+    const last = try f.sig.sign(message, &f.secret_key);
+    defer std.testing.allocator.free(last);
+    try std.testing.expectEqual(@as(usize, 2500), last.len);
+    try std.testing.expect(!try f.sig.verify(message, last, f.public_key));
+
+    // liboqs computes the last index minus the index, 1023 - 1024, in unsigned
+    // 64-bit arithmetic, so the count wraps.
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), try f.sig.sigsRemaining(f.secret_key));
+    try std.testing.expectEqual(@as(u64, 1023), try f.sig.sigsTotal(f.secret_key));
+
     try std.testing.expectError(oqs.OqsError.SignFailed, f.sig.sign(message, &f.secret_key));
-    try std.testing.expectError(oqs.OqsError.SignFailed, f.sig.sign(message, &f.secret_key));
-    try std.testing.expectEqual(@as(u64, 0), try f.sig.sigsRemaining(f.secret_key));
-    try std.testing.expectEqual(@as(u64, 31), try f.sig.sigsTotal(f.secret_key));
 }
 
 test "verify rejects a tampered message, a flipped signature byte, another key pair's public key and a truncated or extended signature" {
