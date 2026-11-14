@@ -9,8 +9,8 @@ const oqs = @import("oqs");
 
 test "every KEM wrapper names a runtime-enabled algorithm" {
     comptime var count: usize = 0;
-    inline for (@typeInfo(oqs.kem).@"struct".decls) |d| {
-        try std.testing.expect(oqs.isKemEnabled(@field(oqs.kem, d.name).info.name));
+    inline for (@typeInfo(oqs.kem).@"struct".decl_names) |d_name| {
+        try std.testing.expect(oqs.isKemEnabled(@field(oqs.kem, d_name).info.name));
         count += 1;
     }
     try std.testing.expectEqual(oqs.enabledKemCount(), count);
@@ -18,8 +18,8 @@ test "every KEM wrapper names a runtime-enabled algorithm" {
 
 test "every SIG wrapper names a runtime-enabled algorithm" {
     comptime var count: usize = 0;
-    inline for (@typeInfo(oqs.sig).@"struct".decls) |d| {
-        try std.testing.expect(oqs.isSigEnabled(@field(oqs.sig, d.name).info.name));
+    inline for (@typeInfo(oqs.sig).@"struct".decl_names) |d_name| {
+        try std.testing.expect(oqs.isSigEnabled(@field(oqs.sig, d_name).info.name));
         count += 1;
     }
     try std.testing.expectEqual(oqs.enabledSigCount(), count);
