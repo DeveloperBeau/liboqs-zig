@@ -22,7 +22,7 @@ fn parseFamilies(comptime raw: []const u8) []const []const u8 {
     }
 }
 
-/// Look up a family's kind ("kem"/"sig") from the manifest. Panics if the
+/// Look up a family's kind ("kem"/"sig"/"sig_stfl") from the manifest. Panics if the
 /// family has no manifest entry (i.e. enabled-families.txt names something the
 /// generator does not know about).
 fn familyKind(comptime family: []const u8) []const u8 {
@@ -33,6 +33,7 @@ fn familyKind(comptime family: []const u8) []const u8 {
                 return switch (entry.kind) {
                     .kem => "kem",
                     .sig => "sig",
+                    .sig_stfl => "sig_stfl",
                 };
             }
         }
@@ -100,8 +101,11 @@ pub fn build(b: *std.Build) void {
     // umbrella is oqs/<kind>_<family>.h (kem_<f>.h for KEMs, sig_<f>.h for SIGs);
     // its kind comes from the manifest. kem.h/sig.h #include these under the
     // family-level OQS_ENABLE_* guards, so the enabled set must match oqsconfig.h.
+    // Stateful families are skipped here: sig_stfl.c includes their umbrella
+    // headers unconditionally, so they are in the fixed list above.
     inline for (enabled_families) |fam| {
-        const sub = comptime familyKind(fam); // "kem" or "sig"
+        const sub = comptime familyKind(fam); // "kem", "sig" or "sig_stfl"
+        if (comptime std.mem.eql(u8, sub, "sig_stfl")) continue;
         const rel = b.fmt("src/{s}/{s}/{s}_{s}.h", .{ sub, fam, sub, fam });
         const dst = b.fmt("oqs/{s}_{s}.h", .{ sub, fam });
         _ = hdrs.addCopyFile(liboqs.path(rel), dst);
@@ -174,6 +178,7 @@ pub fn build(b: *std.Build) void {
             // dispatchers
             "kem/kem.c",
             "sig/sig.c",
+            "sig_stfl/sig_stfl.c",
         },
     });
 

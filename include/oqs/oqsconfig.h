@@ -7,7 +7,7 @@
 // OQS_ENABLE_* guards, and kem.h/sig.h #include the per-family umbrella headers
 // under the family-level guards. Enabling a family here without compiling it
 // (or vice versa) breaks the build.
-// Stateful signatures (XMSS/LMS) and optimized backends excluded.
+// Stateful signatures (XMSS/LMS) follow the same list. Optimized backends excluded.
 
 #ifndef OQS_OQSCONFIG_H
 #define OQS_OQSCONFIG_H
@@ -313,8 +313,91 @@
 #define OQS_ENABLE_SIG_uov_ov_V_pkc 1
 #define OQS_ENABLE_SIG_uov_ov_V_pkc_skc 1
 
-// Families not listed in build/enabled-families.txt, plus stateful
-// signatures (XMSS/LMS), are intentionally left
+// --- Stateful SIGs ---
+// Key generation and signing are on. sig_stfl.h picks the layout of the
+// OQS_SIG_STFL struct from OQS_ALLOW_STFL_KEY_AND_SIG_GEN, so these defines
+// live here, where every C translation unit and Zig's @cImport see them.
+// A -D flag on the C build alone would give Zig a different struct layout.
+// OQS_ENABLE_SIG_STFL is not read by liboqs. It marks that at least one
+// stateful family is compiled.
+#define OQS_ALLOW_STFL_KEY_AND_SIG_GEN 1
+#define OQS_ALLOW_XMSS_KEY_AND_SIG_GEN 1
+#define OQS_ALLOW_LMS_KEY_AND_SIG_GEN 1
+#define OQS_ENABLE_SIG_STFL 1
+#define OQS_ENABLE_SIG_STFL_XMSS 1
+#define OQS_ENABLE_SIG_STFL_xmss_sha256_h10 1
+#define OQS_ENABLE_SIG_STFL_xmss_sha256_h10_192 1
+#define OQS_ENABLE_SIG_STFL_xmss_sha256_h16 1
+#define OQS_ENABLE_SIG_STFL_xmss_sha256_h16_192 1
+#define OQS_ENABLE_SIG_STFL_xmss_sha256_h20 1
+#define OQS_ENABLE_SIG_STFL_xmss_sha256_h20_192 1
+#define OQS_ENABLE_SIG_STFL_xmss_sha512_h10 1
+#define OQS_ENABLE_SIG_STFL_xmss_sha512_h16 1
+#define OQS_ENABLE_SIG_STFL_xmss_sha512_h20 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake128_h10 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake128_h16 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake128_h20 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake256_h10 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake256_h10_192 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake256_h10_256 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake256_h16 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake256_h16_192 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake256_h16_256 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake256_h20 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake256_h20_192 1
+#define OQS_ENABLE_SIG_STFL_xmss_shake256_h20_256 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_sha256_h20_2 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_sha256_h20_4 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_sha256_h40_2 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_sha256_h40_4 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_sha256_h40_8 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_sha256_h60_12 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_sha256_h60_3 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_sha256_h60_6 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_shake128_h20_2 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_shake128_h20_4 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_shake128_h40_2 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_shake128_h40_4 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_shake128_h40_8 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_shake128_h60_12 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_shake128_h60_3 1
+#define OQS_ENABLE_SIG_STFL_xmssmt_shake128_h60_6 1
+#define OQS_ENABLE_SIG_STFL_LMS 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h10_w1 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h10_w2 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h10_w2_h10_w2 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h10_w4 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h10_w4_h10_w4 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h10_w4_h5_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h10_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h10_w8_h10_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h10_w8_h5_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h15_w1 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h15_w2 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h15_w4 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h15_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h15_w8_h10_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h15_w8_h15_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h15_w8_h5_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h20_w1 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h20_w2 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h20_w4 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h20_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h20_w8_h10_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h20_w8_h15_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h20_w8_h20_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h20_w8_h5_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h25_w1 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h25_w2 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h25_w4 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h25_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h5_w1 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h5_w2 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h5_w4 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h5_w8 1
+#define OQS_ENABLE_SIG_STFL_lms_sha256_h5_w8_h5_w8 1
+
+// Families not listed in build/enabled-families.txt are intentionally left
 // undefined until they are compiled.
 
 #endif // OQS_OQSCONFIG_H
