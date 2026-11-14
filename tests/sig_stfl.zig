@@ -235,8 +235,7 @@ test "verify rejects a tampered message, a flipped signature byte, another key p
 
         try std.testing.expect(!try f.sig.verify(message, s, other.public_key));
 
-        // XMSS reads a fixed signature length without checking it, so these
-        // must be refused before they reach liboqs.
+        // liboqs checks the exact signature length for every stateful variant.
         try std.testing.expect(!try f.sig.verify(message, s[0 .. s.len - 1], f.public_key));
         try std.testing.expect(!try f.sig.verify(message, s[0..0], f.public_key));
 

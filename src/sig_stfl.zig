@@ -85,11 +85,9 @@ pub const SigStfl = struct {
 
     /// True if `signature` is a valid signature of `message` under `public_key`.
     ///
-    /// A signature of the wrong length is rejected before it reaches liboqs,
-    /// because the XMSS verifier reads a fixed length without checking it.
+    /// liboqs rejects a signature whose length differs from `lengthSignatureMax`.
     pub fn verify(self: SigStfl, message: []const u8, signature: []const u8, public_key: []const u8) OqsError!bool {
         if (public_key.len != self.lengthPublicKey()) return OqsError.InvalidKeySize;
-        if (signature.len != self.lengthSignatureMax()) return false;
         return c.OQS_SIG_STFL_verify(self.handle, message.ptr, message.len, signature.ptr, signature.len, public_key.ptr) == c.OQS_SUCCESS;
     }
 
