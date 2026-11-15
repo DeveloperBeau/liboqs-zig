@@ -241,8 +241,8 @@ pub fn build(b: *std.Build) void {
     oqs_mod.linkLibrary(cliboqs);
     oqs_mod.addIncludePath(oqs_include);
 
-    // The liboqs C API is translated by the build system (`@cImport` was
-    // removed from the language) and imported by src/c.zig as `c_api`.
+    // The build system's translate-c step turns the liboqs C API in src/c.h
+    // into a Zig module. src/c.zig imports it as `c_api`.
     const translate_c = b.addTranslateC(.{
         .root_source_file = b.path("src/c.h"),
         .target = target,

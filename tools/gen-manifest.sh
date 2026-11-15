@@ -742,7 +742,7 @@ if stfl_blocks:
     cfg.append("// --- Stateful SIGs ---")
     cfg.append("// Key generation and signing are on. sig_stfl.h picks the layout of the")
     cfg.append("// OQS_SIG_STFL struct from OQS_ALLOW_STFL_KEY_AND_SIG_GEN, so these defines")
-    cfg.append("// live here, where every C translation unit and Zig's @cImport see them.")
+    cfg.append("// live here, where every C translation unit and the Zig translate-c step see them.")
     cfg.append("// A -D flag on the C build alone would give Zig a different struct layout.")
     cfg.append("// OQS_ENABLE_SIG_STFL is not read by liboqs. It marks that at least one")
     cfg.append("// stateful family is compiled.")
