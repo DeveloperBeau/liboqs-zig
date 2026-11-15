@@ -47,9 +47,9 @@ pub fn main() !void {
     // Drive the Zig side from the typed registry so parity validates the typed
     // API, not just the runtime core. Seed before generateKeyPair: OQS_*_new
     // consumes no RNG, so the DRBG state at keypair time matches cref.
-    inline for (@typeInfo(oqs.kem).@"struct".decls) |d| {
+    inline for (@typeInfo(oqs.kem).@"struct".decl_names) |d_name| {
         if (idx % total == shard) {
-            const T = @field(oqs.kem, d.name);
+            const T = @field(oqs.kem, d_name);
             std.debug.print("  zref[{d}] {s}\n", .{ shard, T.algorithm_name });
             seed();
             var kp = try T.generateKeyPair(a);
@@ -68,9 +68,9 @@ pub fn main() !void {
         }
         idx += 1;
     }
-    inline for (@typeInfo(oqs.sig).@"struct".decls) |d| {
+    inline for (@typeInfo(oqs.sig).@"struct".decl_names) |d_name| {
         if (idx % total == shard) {
-            const T = @field(oqs.sig, d.name);
+            const T = @field(oqs.sig, d_name);
             std.debug.print("  zref[{d}] {s}\n", .{ shard, T.algorithm_name });
             seed();
             var kp = try T.generateKeyPair(a);

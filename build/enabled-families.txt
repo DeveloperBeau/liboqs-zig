@@ -24,3 +24,6 @@ snova
 mqom
 bike
 uov
+# Stateful hash-based signatures. The xmss family also holds XMSS^MT.
+xmss
+lms
