@@ -210,14 +210,14 @@ pub fn build(b: *std.Build) void {
             if (std.mem.startsWith(u8, flag.text, "-include ")) {
                 const rel = flag.text["-include ".len..];
                 flags.append(b.allocator, "-include") catch @panic("OOM");
-                const abs = liboqs.path(b.fmt("src/{s}", .{rel})).getPath(b);
+                const abs = liboqs.builder.root.joinString(b.allocator, b.fmt("src/{s}", .{rel})) catch @panic("OOM");
                 flags.append(b.allocator, abs) catch @panic("OOM");
                 continue;
             }
             flags.append(b.allocator, flag.text) catch @panic("OOM");
         }
         for (entry.includes) |inc| {
-            const abs = liboqs.path(b.fmt("src/{s}", .{inc})).getPath(b);
+            const abs = liboqs.builder.root.joinString(b.allocator, b.fmt("src/{s}", .{inc})) catch @panic("OOM");
             flags.append(b.allocator, b.fmt("-I{s}", .{abs})) catch @panic("OOM");
         }
 
@@ -240,6 +240,16 @@ pub fn build(b: *std.Build) void {
     });
     oqs_mod.linkLibrary(cliboqs);
     oqs_mod.addIncludePath(oqs_include);
+
+    // The liboqs C API is translated by the build system (`@cImport` was
+    // removed from the language) and imported by src/c.zig as `c_api`.
+    const translate_c = b.addTranslateC(.{
+        .root_source_file = b.path("src/c.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    translate_c.addIncludePath(oqs_include);
+    oqs_mod.addImport("c_api", translate_c.createModule());
 
     const mod_tests = b.addTest(.{ .root_module = oqs_mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);

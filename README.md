@@ -6,7 +6,7 @@ A safe Zig wrapper over [liboqs](https://github.com/open-quantum-safe/liboqs), t
 
 ## Requirements
 
-- Zig 0.16.0
+- Zig 0.17.1
 - A C toolchain (Zig ships one; nothing else needed)
 
 ## Add to your project
