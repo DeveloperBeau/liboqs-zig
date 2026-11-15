@@ -28,7 +28,7 @@ const dep = b.dependency("liboqs_zig", .{
 exe.root_module.addImport("oqs", dep.module("oqs"));
 ```
 
-Now `@import("oqs")` works from your code. The module brings the compiled liboqs and its headers with it, so there is nothing else to install. The first build compiles the liboqs C slice (16 algorithm families), which takes a minute or two; later builds are cached.
+Now `@import("oqs")` works from your code. The module brings the compiled liboqs and its headers with it, so there is nothing else to install. The first build compiles the liboqs C slice (18 algorithm families), which takes a minute or two. Later builds are cached.
 
 Wrapped liboqs version: 0.16.0. Note two upstream changes in that release: the `FrodoKEM-*` names now refer to the salted FrodoKEM variants (the 0.15 algorithms live on as `eFrodoKEM-*`, and ciphertext sizes differ between the two), and HQC was updated to the 2025-08-22 specification under new names (`HQC-1/3/5` replacing `HQC-128/192/256`). Ciphertexts and keys produced by 0.15-era builds do not interoperate across those changes.
 
@@ -62,14 +62,37 @@ const ok = try sk.public_key.isValidSignature("message", sig.bytes);
 
 The wrappers (`oqs.kem.*`, `oqs.sig.*`) are generated from liboqs' own headers for every enabled algorithm: 41 KEMs and 221 signature variants, including the full SLH-DSA matrix. A runtime, name-based API (`oqs.Kem`, `oqs.Sig`) is also available.
 
+## Stateful signatures
+
+The build includes the stateful hash-based signature families from liboqs: 21 XMSS, 16 XMSS^MT and 33 LMS variants, 70 in all. Each key pair can sign only a fixed number of times. `oqs.SigStfl` is the runtime, name-based core for them. `sign` takes the secret key state, and liboqs advances the signature index inside it.
+
+```zig
+var alg = try oqs.SigStfl.init(allocator, "LMS_SHA256_H5_W8");
+defer alg.deinit();
+var kp = try alg.keypair();
+defer allocator.free(kp.public_key);
+defer kp.secret_key.deinit();                 // zeroes the key state
+
+const sig = try alg.sign("message", &kp.secret_key);
+defer allocator.free(sig);
+const ok = try alg.verify("message", sig, kp.public_key);
+const left = try alg.sigsRemaining(kp.secret_key);
+```
+
+For a tree of height h, liboqs reports `sigsTotal` as 2^h - 1. As in liboqs, a key makes `sigsTotal` + 1 signatures, and the last one is made when `sigsRemaining` already reads 0. For XMSS that last signature uses wiped key material and does not verify. After it, `sign` returns `error.SignFailed` and no signature. `oqs.isSigStflEnabled(name)` and `oqs.enabledSigStflCount()` report what is compiled in.
+
+The core keeps the key state in memory only and writes nothing to storage, so a key pair cannot sign again after the process exits. There are no typed wrappers for the stateful algorithms.
+
 ## Build and test
 
 ```sh
 zig build              # build the static C library and the oqs module
-zig build test         # unit, smoke, typed-API, functional, and concurrency tests
+zig build test         # unit, smoke, typed-API, functional, concurrency, and stateful tests
 zig build parity       # every algorithm: C reference vs Zig wrapper, byte-identical
 zig build snapshot     # wrapper output vs the frozen liboqs reference digests
 ```
+
+The stateful fuzz test uses a fixed seed. `zig build test --summary all` shows it in the name of the stateful test step, and `-Dfuzz-seed=N` runs it with another seed.
 
 `parity` runs the full algorithm set, so it is slow (Classic McEliece keygen and SLH-DSA signing dominate). It shards across CPU cores and prints each algorithm as it goes, finishing with an OK or FAILED summary.
 

@@ -22,7 +22,7 @@ fn parseFamilies(comptime raw: []const u8) []const []const u8 {
     }
 }
 
-/// Look up a family's kind ("kem"/"sig") from the manifest. Panics if the
+/// Look up a family's kind ("kem"/"sig"/"sig_stfl") from the manifest. Panics if the
 /// family has no manifest entry (i.e. enabled-families.txt names something the
 /// generator does not know about).
 fn familyKind(comptime family: []const u8) []const u8 {
@@ -33,6 +33,7 @@ fn familyKind(comptime family: []const u8) []const u8 {
                 return switch (entry.kind) {
                     .kem => "kem",
                     .sig => "sig",
+                    .sig_stfl => "sig_stfl",
                 };
             }
         }
@@ -100,8 +101,11 @@ pub fn build(b: *std.Build) void {
     // umbrella is oqs/<kind>_<family>.h (kem_<f>.h for KEMs, sig_<f>.h for SIGs);
     // its kind comes from the manifest. kem.h/sig.h #include these under the
     // family-level OQS_ENABLE_* guards, so the enabled set must match oqsconfig.h.
+    // Stateful families are skipped here: sig_stfl.c includes their umbrella
+    // headers unconditionally, so they are in the fixed list above.
     inline for (enabled_families) |fam| {
-        const sub = comptime familyKind(fam); // "kem" or "sig"
+        const sub = comptime familyKind(fam); // "kem", "sig" or "sig_stfl"
+        if (comptime std.mem.eql(u8, sub, "sig_stfl")) continue;
         const rel = b.fmt("src/{s}/{s}/{s}_{s}.h", .{ sub, fam, sub, fam });
         const dst = b.fmt("oqs/{s}_{s}.h", .{ sub, fam });
         _ = hdrs.addCopyFile(liboqs.path(rel), dst);
@@ -174,6 +178,7 @@ pub fn build(b: *std.Build) void {
             // dispatchers
             "kem/kem.c",
             "sig/sig.c",
+            "sig_stfl/sig_stfl.c",
         },
     });
 
@@ -300,6 +305,26 @@ pub fn build(b: *std.Build) void {
     const concurrency_tests = b.addTest(.{ .root_module = concurrency_mod });
     const run_concurrency_tests = b.addRunArtifact(concurrency_tests);
     test_step.dependOn(&run_concurrency_tests.step);
+
+    // Stateful signature tests (system RNG, never seeds KAT).
+    const sig_stfl_mod = b.createModule(.{
+        .root_source_file = b.path("tests/sig_stfl.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    sig_stfl_mod.addImport("oqs", oqs_mod);
+    // The fuzz test's seed comes from here, and the run step carries it in its
+    // name, so `zig build test --summary all` shows it on a passing run. A test
+    // that writes to stderr is reported as a failed command, so the test
+    // itself prints the seed only when it fails.
+    const fuzz_seed = b.option(u64, "fuzz-seed", "Seed for the stateful signature fuzz test") orelse 0x5717_F022;
+    const sig_stfl_options = b.addOptions();
+    sig_stfl_options.addOption(u64, "fuzz_seed", fuzz_seed);
+    sig_stfl_mod.addOptions("build_options", sig_stfl_options);
+    const sig_stfl_tests = b.addTest(.{ .root_module = sig_stfl_mod });
+    const run_sig_stfl_tests = b.addRunArtifact(sig_stfl_tests);
+    run_sig_stfl_tests.setName(b.fmt("run sig_stfl tests (fuzz seed 0x{x})", .{fuzz_seed}));
+    test_step.dependOn(&run_sig_stfl_tests.step);
 
     // ------------------------------------------------------------------
     // C reference harness: cref
