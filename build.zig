@@ -279,12 +279,10 @@ pub fn build(b: *std.Build) void {
     const run_typed_tests = b.addRunArtifact(typed_tests);
     test_step.dependOn(&run_typed_tests.step);
 
-    // Secret-zeroing test, forced to ReleaseFast. In safety builds
-    // (Debug/ReleaseSafe) Allocator.free poisons freed memory with 0xAA after
-    // our secureZero, so the zeroing is unobservable and that test skips.
-    // ReleaseFast is where the guarantee holds, and where deleting the
-    // secureZero call turns `zig build test` red. keys.zig only imports std,
-    // so this needs no cliboqs linkage.
+    // Secret-zeroing test, also run at ReleaseFast. The main test run builds
+    // keys.zig in the chosen mode, Debug by default. This run checks the wipe
+    // where the optimizer is free to drop stores to memory that is about to
+    // be freed. keys.zig only imports std, so this needs no cliboqs linkage.
     const keys_release_mod = b.createModule(.{
         .root_source_file = b.path("src/keys.zig"),
         .target = target,
