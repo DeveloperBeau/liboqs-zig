@@ -30,8 +30,13 @@ if [ "$HASH" != "$PINNED" ]; then
 fi
 GLOBAL_CACHE="$(zig env | sed -n 's/^ *\.global_cache_dir = "\(.*\)",$/\1/p')"
 tar -xzf "$GLOBAL_CACHE/p/$HASH.tar.gz" -C "$TMP"
+# Zig 0.16 stores the package tree at the top of the tarball. Zig 0.17 keeps
+# the upstream top-level folder (liboqs-<version>/) inside it.
 SRC="$TMP/$HASH/src"
-[ -d "$SRC" ] || { echo "error: $SRC not found after extraction" >&2; exit 1; }
+if [ ! -d "$SRC" ]; then
+  SRC="$(find "$TMP/$HASH" -mindepth 2 -maxdepth 2 -type d -name src | head -n 1)"
+fi
+[ -n "$SRC" ] && [ -d "$SRC" ] || { echo "error: no src folder found after extracting $HASH" >&2; exit 1; }
 
 mkdir -p "$ROOT/build"
 
