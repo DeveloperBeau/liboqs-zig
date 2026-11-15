@@ -96,23 +96,36 @@ const Expected = struct {
     // liboqs counts signatures up to the highest index, so a tree of height h
     // reports 2^h - 1 (xmss_total_signatures and the hash-sigs max_count).
     sigs_total: u64,
+    // Where the big-endian signature index sits in a signature, and its width.
+    index_offset: usize,
+    index_len: usize,
+
+    /// Reads the signature index from the bytes, as the RFC layout places it.
+    fn index(self: Expected, signature: []const u8) u64 {
+        var value: u64 = 0;
+        for (signature[self.index_offset..][0..self.index_len]) |byte| value = (value << 8) | byte;
+        return value;
+    }
 };
 
 // XMSS-SHA2_10_256 (n = 32, len = 67, h = 10): pk = 4 (OID) + 32 (root) +
 // 32 (seed) = 68. sig = 4 (index) + 32 (R) + 67 * 32 (WOTS) + 10 * 32 (path) = 2500.
-const xmss_h10 = Expected{ .name = "XMSS-SHA2_10_256", .public_key = 68, .signature = 2500, .sigs_total = 1023 };
+// The index is the first 4 bytes.
+const xmss_h10 = Expected{ .name = "XMSS-SHA2_10_256", .public_key = 68, .signature = 2500, .sigs_total = 1023, .index_offset = 0, .index_len = 4 };
 
 // XMSSMT-SHA2_20/4_256 (h = 20, d = 4, layers of height 5): pk = 68.
 // sig = 3 (index) + 32 (R) + 4 * (67 * 32 + 5 * 32) = 9251.
-const xmssmt_h20_4 = Expected{ .name = "XMSSMT-SHA2_20/4_256", .public_key = 68, .signature = 9251, .sigs_total = 1048575 };
+// The index is the first ceil(20 / 8) = 3 bytes.
+const xmssmt_h20_4 = Expected{ .name = "XMSSMT-SHA2_20/4_256", .public_key = 68, .signature = 9251, .sigs_total = 1048575, .index_offset = 0, .index_len = 3 };
 
 // LMS_SHA256_H5_W8 as one-level HSS (n = 32, p = 34, h = 5):
 // pk = 4 (levels) + 4 (LMS type) + 4 (OTS type) + 16 (I) + 32 (T) = 60.
 // sig = 4 (Nspk) + 4 (q) + 4 (OTS type) + 32 (C) + 34 * 32 (y) + 4 (LMS type) + 5 * 32 (path) = 1296.
-const lms_h5_w8 = Expected{ .name = "LMS_SHA256_H5_W8", .public_key = 60, .signature = 1296, .sigs_total = 31 };
+// The index q is the 4 bytes after Nspk.
+const lms_h5_w8 = Expected{ .name = "LMS_SHA256_H5_W8", .public_key = 60, .signature = 1296, .sigs_total = 31, .index_offset = 4, .index_len = 4 };
 
 // LMS_SHA256_H5_W1 (p = 265): pk = 60. sig = 4 + 4 + 4 + 32 + 265 * 32 + 4 + 5 * 32 = 8688.
-const lms_h5_w1 = Expected{ .name = "LMS_SHA256_H5_W1", .public_key = 60, .signature = 8688, .sigs_total = 31 };
+const lms_h5_w1 = Expected{ .name = "LMS_SHA256_H5_W1", .public_key = 60, .signature = 8688, .sigs_total = 31, .index_offset = 4, .index_len = 4 };
 
 const exercised = [_]Expected{ xmss_h10, xmssmt_h20_4, lms_h5_w8 };
 
@@ -314,51 +327,119 @@ test "a secret key state from another algorithm returns InvalidKeySize and is no
     try std.testing.expectEqual(@as(u64, 31), try lms.sig.sigsRemaining(lms.secret_key));
 }
 
+test "four signatures from one key carry the indices 0, 1, 2 and 3 in their own bytes" {
+    for (exercised) |e| {
+        var f = try Fixture.init(e.name);
+        defer f.deinit();
+        var expected: u64 = 0;
+        while (expected < 4) : (expected += 1) {
+            const s = try f.sig.sign(message, &f.secret_key);
+            defer std.testing.allocator.free(s);
+            try std.testing.expectEqual(expected, e.index(s));
+            try std.testing.expect(try f.sig.verify(message, s, f.public_key));
+        }
+    }
+}
+
+// SigStflSecretKey holds a pointer to the liboqs key object, so copying the
+// value copies the pointer and both copies share one state. The API has no
+// way to make a second, independent state from a key.
+test "a copied SigStflSecretKey shares one state, so signing through the copy and the original never reuses an index" {
+    for (exercised) |e| {
+        var f = try Fixture.init(e.name);
+        defer f.deinit();
+        // Only f.deinit releases the state, because the copy owns nothing.
+        var copy = f.secret_key;
+
+        const s1 = try f.sig.sign(message, &copy);
+        defer std.testing.allocator.free(s1);
+        const s2 = try f.sig.sign(message, &f.secret_key);
+        defer std.testing.allocator.free(s2);
+        const s3 = try f.sig.sign(message, &copy);
+        defer std.testing.allocator.free(s3);
+
+        try std.testing.expectEqual(@as(u64, 0), e.index(s1));
+        try std.testing.expectEqual(@as(u64, 1), e.index(s2));
+        try std.testing.expectEqual(@as(u64, 2), e.index(s3));
+        try std.testing.expectEqual(e.sigs_total - 3, try f.sig.sigsRemaining(f.secret_key));
+        try std.testing.expectEqual(e.sigs_total - 3, try f.sig.sigsRemaining(copy));
+        try std.testing.expect(try f.sig.verify(message, s1, f.public_key));
+        try std.testing.expect(try f.sig.verify(message, s2, f.public_key));
+        try std.testing.expect(try f.sig.verify(message, s3, f.public_key));
+    }
+}
+
 // The seed is fixed by build.zig (default 0x5717f022, override with
 // -Dfuzz-seed=N) so a failure reproduces. `zig build test --summary all` shows
 // it in the name of this binary's run step, and every failure message prints it.
-test "fuzz with a seed from the build: mutated signatures and messages are rejected and the valid pair is always accepted" {
+test "fuzz with a seed from the build: several seeded valid pairs per family are accepted, and mutated or swapped ones are rejected" {
     const seed: u64 = build_options.fuzz_seed;
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
-    const rounds = 48;
+    const pairs = 4;
+    const rounds = 12;
+    const max_message = 128;
 
     for (exercised) |e| {
         var f = try Fixture.init(e.name);
         defer f.deinit();
 
-        var msg: [64]u8 = undefined;
-        rand.bytes(&msg);
-        const s = try f.sig.sign(&msg, &f.secret_key);
-        defer std.testing.allocator.free(s);
+        // Each pair gets its own message of a seeded length and its own
+        // signature, at its own index.
+        var messages: [pairs][max_message]u8 = undefined;
+        var lengths: [pairs]usize = undefined;
+        var signatures: [pairs][]u8 = undefined;
+        var made: usize = 0;
+        defer for (signatures[0..made]) |s| std.testing.allocator.free(s);
+        while (made < pairs) : (made += 1) {
+            lengths[made] = rand.intRangeAtMost(usize, 1, max_message);
+            rand.bytes(messages[made][0..lengths[made]]);
+            signatures[made] = try f.sig.sign(messages[made][0..lengths[made]], &f.secret_key);
+        }
 
-        const bad_sig = try std.testing.allocator.alloc(u8, s.len);
+        const bad_sig = try std.testing.allocator.alloc(u8, e.signature);
         defer std.testing.allocator.free(bad_sig);
-        var bad_msg: [msg.len]u8 = undefined;
+        var bad_msg: [max_message]u8 = undefined;
 
-        var round: usize = 0;
-        while (round < rounds) : (round += 1) {
-            // False positives: one byte changed by a nonzero mask must fail.
-            @memcpy(bad_sig, s);
-            const sig_at = rand.uintLessThan(usize, s.len);
-            bad_sig[sig_at] ^= rand.intRangeAtMost(u8, 1, 255);
-            if (try f.sig.verify(&msg, bad_sig, f.public_key)) {
-                std.debug.print("{s}: accepted a signature mutated at byte {d} (seed 0x{x})\n", .{ e.name, sig_at, seed });
-                return error.TestUnexpectedResult;
+        for (0..pairs) |p| {
+            const msg = messages[p][0..lengths[p]];
+            const s = signatures[p];
+
+            // False positives: a signature checked against another pair's
+            // message must fail.
+            for (0..pairs) |q| {
+                const other = messages[q][0..lengths[q]];
+                if (q == p or std.mem.eql(u8, other, msg)) continue;
+                if (try f.sig.verify(other, s, f.public_key)) {
+                    std.debug.print("{s}: accepted signature {d} for message {d} (seed 0x{x})\n", .{ e.name, p, q, seed });
+                    return error.TestUnexpectedResult;
+                }
             }
 
-            bad_msg = msg;
-            const msg_at = rand.uintLessThan(usize, msg.len);
-            bad_msg[msg_at] ^= rand.intRangeAtMost(u8, 1, 255);
-            if (try f.sig.verify(&bad_msg, s, f.public_key)) {
-                std.debug.print("{s}: accepted a message mutated at byte {d} (seed 0x{x})\n", .{ e.name, msg_at, seed });
-                return error.TestUnexpectedResult;
-            }
+            var round: usize = 0;
+            while (round < rounds) : (round += 1) {
+                // False positives: one byte changed by a nonzero mask must fail.
+                @memcpy(bad_sig, s);
+                const sig_at = rand.uintLessThan(usize, s.len);
+                bad_sig[sig_at] ^= rand.intRangeAtMost(u8, 1, 255);
+                if (try f.sig.verify(msg, bad_sig, f.public_key)) {
+                    std.debug.print("{s}: pair {d} accepted a signature mutated at byte {d} (seed 0x{x})\n", .{ e.name, p, sig_at, seed });
+                    return error.TestUnexpectedResult;
+                }
 
-            // False negatives: the untouched pair must still verify.
-            if (!try f.sig.verify(&msg, s, f.public_key)) {
-                std.debug.print("{s}: rejected the valid pair in round {d} (seed 0x{x})\n", .{ e.name, round, seed });
-                return error.TestUnexpectedResult;
+                @memcpy(bad_msg[0..msg.len], msg);
+                const msg_at = rand.uintLessThan(usize, msg.len);
+                bad_msg[msg_at] ^= rand.intRangeAtMost(u8, 1, 255);
+                if (try f.sig.verify(bad_msg[0..msg.len], s, f.public_key)) {
+                    std.debug.print("{s}: pair {d} accepted a message mutated at byte {d} (seed 0x{x})\n", .{ e.name, p, msg_at, seed });
+                    return error.TestUnexpectedResult;
+                }
+
+                // False negatives: the untouched pair must still verify.
+                if (!try f.sig.verify(msg, s, f.public_key)) {
+                    std.debug.print("{s}: rejected valid pair {d} in round {d} (seed 0x{x})\n", .{ e.name, p, round, seed });
+                    return error.TestUnexpectedResult;
+                }
             }
         }
     }
