@@ -1,3 +1,3 @@
 //! Single import boundary for the liboqs C API. Internal use only.
-//! The translated C module is wired in by build.zig (`@cImport` is gone).
+//! build.zig translates the C API in src/c.h with translate-c and provides it as `c_api`.
 pub const c = @import("c_api");

@@ -316,7 +316,7 @@
 // --- Stateful SIGs ---
 // Key generation and signing are on. sig_stfl.h picks the layout of the
 // OQS_SIG_STFL struct from OQS_ALLOW_STFL_KEY_AND_SIG_GEN, so these defines
-// live here, where every C translation unit and Zig's @cImport see them.
+// live here, where every C translation unit and the Zig translate-c step see them.
 // A -D flag on the C build alone would give Zig a different struct layout.
 // OQS_ENABLE_SIG_STFL is not read by liboqs. It marks that at least one
 // stateful family is compiled.

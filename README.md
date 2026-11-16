@@ -79,9 +79,9 @@ const ok = try alg.verify("message", sig, kp.public_key);
 const left = try alg.sigsRemaining(kp.secret_key);
 ```
 
-For a tree of height h, liboqs reports `sigsTotal` as 2^h - 1. As in liboqs, a key makes `sigsTotal` + 1 signatures, and the last one is made when `sigsRemaining` already reads 0. For XMSS that last signature uses wiped key material and does not verify. After it, `sign` returns `error.SignFailed` and no signature. `oqs.isSigStflEnabled(name)` and `oqs.enabledSigStflCount()` report what is compiled in.
+For a tree of height h, liboqs reports `sigsTotal` as 2^h - 1. As in liboqs, a key makes `sigsTotal` + 1 signatures, and the last one is made when `sigsRemaining` already reads 0. For XMSS that last signature uses wiped key material and does not verify. After it, `sign` returns `error.SignFailed` and no signature. `sign` also returns `error.SignFailed` whenever liboqs reports an error, and never hands back a signature in that case. `oqs.isSigStflEnabled(name)` and `oqs.enabledSigStflCount()` report what is compiled in.
 
-The core keeps the key state in memory only and writes nothing to storage, so a key pair cannot sign again after the process exits. There are no typed wrappers for the stateful algorithms.
+The core keeps the key state in memory only and writes nothing to storage, so a key pair cannot sign again after the process exits. A `SigStflSecretKey` value points at one liboqs key state. A copy of the value shares that state, so signing through either copy takes the next index. Call `deinit` on one copy only. There are no typed wrappers for the stateful algorithms.
 
 ## Build and test
 
@@ -92,7 +92,7 @@ zig build parity       # every algorithm: C reference vs Zig wrapper, byte-ident
 zig build snapshot     # wrapper output vs the frozen liboqs reference digests
 ```
 
-The stateful fuzz test uses a fixed seed. `zig build test --summary all` shows it in the name of the stateful test step, and `-Dfuzz-seed=N` runs it with another seed.
+The stateful fuzz test signs several seeded messages per family, then checks that each valid pair verifies and that mutated or swapped pairs do not. It uses a fixed seed. `zig build test --summary all` shows it in the name of the stateful test step, and `-Dfuzz-seed=N` runs it with another seed.
 
 `parity` runs the full algorithm set, so it is slow (Classic McEliece keygen and SLH-DSA signing dominate). It shards across CPU cores and prints each algorithm as it goes, finishing with an OK or FAILED summary.
 
