@@ -268,6 +268,9 @@ pub fn build(b: *std.Build) void {
     const run_smoke_tests = b.addRunArtifact(smoke_tests);
     test_step.dependOn(&run_smoke_tests.step);
 
+    // Seed for the stateful fuzz tests, shared by the core and typed runs.
+    const fuzz_seed = b.option(u64, "fuzz-seed", "Seed for the stateful signature fuzz test") orelse 0x5717_F022;
+
     // Typed-API tests: registry gate + namespace round-trips + type safety.
     const typed_mod = b.createModule(.{
         .root_source_file = b.path("tests/typed.zig"),
@@ -275,8 +278,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     typed_mod.addImport("oqs", oqs_mod);
+    // The typed stateful fuzz test takes the same seed as the core one.
+    const typed_options = b.addOptions();
+    typed_options.addOption(u64, "fuzz_seed", fuzz_seed);
+    typed_mod.addOptions("build_options", typed_options);
     const typed_tests = b.addTest(.{ .root_module = typed_mod });
     const run_typed_tests = b.addRunArtifact(typed_tests);
+    run_typed_tests.setName(b.fmt("run typed tests (fuzz seed 0x{x})", .{fuzz_seed}));
     test_step.dependOn(&run_typed_tests.step);
 
     // Secret-zeroing test, also run at ReleaseFast. The main test run builds
@@ -325,7 +333,6 @@ pub fn build(b: *std.Build) void {
     // name, so `zig build test --summary all` shows it on a passing run. A test
     // that writes to stderr is reported as a failed command, so the test
     // itself prints the seed only when it fails.
-    const fuzz_seed = b.option(u64, "fuzz-seed", "Seed for the stateful signature fuzz test") orelse 0x5717_F022;
     const sig_stfl_options = b.addOptions();
     sig_stfl_options.addOption(u64, "fuzz_seed", fuzz_seed);
     sig_stfl_mod.addOptions("build_options", sig_stfl_options);
