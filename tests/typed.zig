@@ -276,11 +276,12 @@ test "LMS_SHA256_H5_W1 typed key makes 32 signatures, the 32nd at sigsRemaining 
 }
 
 // The seed comes from build.zig (default 0x5717f022, override with
-// -Dfuzz-seed=N). `zig build test --summary all` shows it in the name of this
-// binary's run step. The test itself prints it with every failure, because a
-// test that writes to stderr on success is reported as a failed command.
+// -Dfuzz-seed=N). The test prints it at the start of a run and again in every
+// failure message. `zig build test --summary all` also shows it in the name of
+// this binary's run step.
 test "fuzz with a seed from the build: typed pairs verify, and mutated or swapped ones are rejected" {
     const seed: u64 = build_options.fuzz_seed;
+    std.debug.print("fuzz seed 0x{x}\n", .{seed});
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
     const a = std.testing.allocator;
