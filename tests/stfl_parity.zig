@@ -106,6 +106,37 @@ test "every enabled liboqs stateful name has a typed wrapper, so the typed harne
     }
 }
 
+test "names with the wrong shape have no height and are never in the default set" {
+    const malformed = [_][]const u8{
+        "",
+        "LMS_",
+        "LMS__H5_W8",
+        "LMS_SHA256",
+        "LMS_SHA256_H5",
+        "LMS_SHA256_H5_W8_H5",
+        // Three levels, where liboqs has at most two.
+        "LMS_SHA256_H5_W8_H5_W8_H5_W8",
+        "LMS_SHA256_W8_H5",
+        "LMS_SHA256_H5_X8",
+        "XMSS-_10_256",
+        "XMSS-SHA2_10",
+        "XMSS-SHA2_10_",
+        "XMSS-SHA2_10_25x",
+        "XMSS-SHA2_10_256_1",
+        "XMSSMT-SHA2_20_256",
+        "XMSSMT-SHA2_20/_256",
+        "XMSSMT-SHA2_20/x_256",
+        "XMSSMT-SHA2_/2_256",
+        "XMSSMT-_20/2_256",
+        "XMSSMT-SHA2_20/2/3_256",
+        "XMSS-SHA2_99999999999_256",
+    };
+    for (malformed) |name| {
+        try std.testing.expectEqual(@as(?u32, null), filter.totalHeight(name));
+        try std.testing.expect(!filter.includedByDefault(name));
+    }
+}
+
 const hashes = [_][]const u8{ "SHA2", "SHAKE", "SHAKE256" };
 const lms_heights = [_]u32{ 5, 10, 15, 20, 25 };
 const lms_widths = [_]u32{ 1, 2, 4, 8 };
@@ -319,6 +350,15 @@ test "compare fails when the two sides disagree about which names run or skip" {
     report.clearRetainingCapacity();
     r = try runCompare(.{ .cref_list = short_list, .zref_list = list_text, .cref_out = out_text, .zref_out = out_text }, &report);
     try std.testing.expect(std.mem.indexOf(u8, report.written(), "LIST MISSING IN CREF: C_THREE") != null);
+}
+
+test "compare fails when the two sides report the same name with different heights" {
+    const other_list = "run A_ONE 5\nrun B_TWO 11\nskip C_THREE 20\n";
+    var report: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer report.deinit();
+    const r = try runCompare(.{ .cref_list = list_text, .zref_list = other_list, .cref_out = out_text, .zref_out = out_text }, &report);
+    try std.testing.expect(r.failures >= 1);
+    try std.testing.expect(std.mem.indexOf(u8, report.written(), "LIST DIFF:            B_TWO") != null);
 }
 
 test "compare fails when nothing is checked and when one side repeats a field with another value" {
