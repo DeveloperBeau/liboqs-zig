@@ -81,7 +81,22 @@ const left = try alg.sigsRemaining(kp.secret_key);
 
 For a tree of height h, liboqs reports `sigsTotal` as 2^h - 1. As in liboqs, a key makes `sigsTotal` + 1 signatures, and the last one is made when `sigsRemaining` already reads 0. For XMSS that last signature uses wiped key material and does not verify. After it, `sign` returns `error.SignFailed` and no signature. `sign` also returns `error.SignFailed` whenever liboqs reports an error, and never hands back a signature in that case. `oqs.isSigStflEnabled(name)` and `oqs.enabledSigStflCount()` report what is compiled in.
 
-The core keeps the key state in memory only and writes nothing to storage, so a key pair cannot sign again after the process exits. A `SigStflSecretKey` value points at one liboqs key state. A copy of the value shares that state, so signing through either copy takes the next index. Call `deinit` on one copy only. There are no typed wrappers for the stateful algorithms.
+The core keeps the key state in memory only and writes nothing to storage, so a key pair cannot sign again after the process exits. A `SigStflSecretKey` value points at one liboqs key state. A copy of the value shares that state, so signing through either copy takes the next index. Call `deinit` on one copy only.
+
+Each stateful variant also has a typed wrapper under `oqs.sig_stfl`, named like the other typed namespaces (`oqs.sig_stfl.LmsSha256H5W8`, `oqs.sig_stfl.XmssSha256H10`, `oqs.sig_stfl.XmssmtSha256H204`). The generator emits them from the pinned liboqs headers, so the 70 wrappers match what is compiled in. A key of one variant cannot be passed to another, and the signing key is the same in-memory state as in the core.
+
+```zig
+var kp = try oqs.sig_stfl.LmsSha256H5W8.generateKeyPair(allocator);
+defer kp.public_key.deinit();
+defer kp.secret_key.deinit();                 // zeroes the key state
+
+var sig = try kp.secret_key.sign("message");  // takes *SecretKey, the index advances
+defer sig.deinit();
+const ok = try kp.public_key.isValidSignature("message", sig.bytes);
+const left = try kp.secret_key.sigsRemaining();
+```
+
+The typed secret key has no import or export, because the core cannot save or restore key state. The exhaustion rules above apply to the typed `sign` as well.
 
 ## Build and test
 
