@@ -90,12 +90,14 @@ fn runOne(comptime T: type, a: std.mem.Allocator, w: *std.Io.Writer) !void {
     seed();
     var s = try kp.secret_key.sign(message);
     defer s.deinit();
-    if (!try kp.public_key.isValidSignature(message, s.bytes)) {
+    const verified = try kp.public_key.isValidSignature(message, s.bytes);
+    if (!verified) {
         std.debug.print("{s}: signature does not verify through the public key\n", .{name});
         return error.SignatureDoesNotVerify;
     }
     try emit(w, name, "pk", kp.public_key.bytes);
     try emit(w, name, "sig", s.bytes);
+    try emit(w, name, "verified", &[_]u8{@intFromBool(verified)});
     try emitCount(w, name, "remaining", try kp.secret_key.sigsRemaining());
     try emitCount(w, name, "total", try kp.secret_key.sigsTotal());
 }

@@ -7,7 +7,7 @@
 
 /* Raw C side of the stateful parity check. Each algorithm gets one keygen and
  * one sign under the NIST-KAT seed, and the harness prints the public key, the
- * signature and the signature counts after that one sign. The secret key is
+ * signature and the signature counts after that one sign, with whether that signature verifies. The secret key is
  * never printed. This stays out of cref.c so the frozen snapshot, which
  * tools/snapshot.sh builds from the zig side alone, has no stateful lines.
  *
@@ -89,8 +89,10 @@ static void run_one(const char *algo) {
     if (OQS_SIG_STFL_sign(s, sig, &siglen, msg, msglen, key) != OQS_SUCCESS) { fprintf(stderr, "sign failed %s\n", algo); exit(1); }
     if (OQS_SIG_STFL_sigs_remaining(s, &remaining, key) != OQS_SUCCESS) { fprintf(stderr, "remaining failed %s\n", algo); exit(1); }
     if (OQS_SIG_STFL_sigs_total(s, &total, key) != OQS_SUCCESS) { fprintf(stderr, "total failed %s\n", algo); exit(1); }
+    uint8_t verified = OQS_SIG_STFL_verify(s, msg, msglen, sig, siglen, pk) == OQS_SUCCESS;
     emit(algo, "pk", pk, s->length_public_key);
     emit(algo, "sig", sig, siglen);
+    emit(algo, "verified", &verified, 1);
     emit_count(algo, "remaining", remaining);
     emit_count(algo, "total", total);
     free(pk); free(sig);

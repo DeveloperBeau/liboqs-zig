@@ -240,8 +240,8 @@ fn expectNotIncluded(mutated: []const u8, original: []const u8, seed: u64, round
 
 const list_text = "run A_ONE 5\nrun B_TWO 10\nskip C_THREE 20\n";
 const out_text =
-    "A_ONE pk 0a0b\nA_ONE sig 1122\nA_ONE remaining 000000000000001e\nA_ONE total 000000000000001f\n" ++
-    "B_TWO pk 0c0d\nB_TWO sig 3344\nB_TWO remaining 00000000000003fe\nB_TWO total 00000000000003ff\n";
+    "A_ONE pk 0a0b\nA_ONE sig 1122\nA_ONE verified 01\nA_ONE remaining 000000000000001e\nA_ONE total 000000000000001f\n" ++
+    "B_TWO pk 0c0d\nB_TWO sig 3344\nB_TWO verified 01\nB_TWO remaining 00000000000003fe\nB_TWO total 00000000000003ff\n";
 
 fn runCompare(in: compare.Inputs, report: *std.Io.Writer.Allocating) !compare.Result {
     return compare.compare(std.testing.allocator, in, &report.writer);
@@ -256,8 +256,8 @@ test "compare passes when both sides agree and counts checked and skipped names"
     try std.testing.expectEqual(@as(usize, 1), r.skipped);
 }
 
-test "compare fails on a one-byte difference in any one of the four fields" {
-    const fields = [_][]const u8{ "pk", "sig", "remaining", "total" };
+test "compare fails on a one-byte difference in any one of the five fields" {
+    const fields = [_][]const u8{ "pk", "sig", "verified", "remaining", "total" };
     inline for (fields) |field| {
         const needle = "A_ONE " ++ field ++ " ";
         const at = std.mem.indexOf(u8, out_text, needle).? + needle.len;
@@ -275,8 +275,8 @@ test "compare fails on a one-byte difference in any one of the four fields" {
 }
 
 test "compare fails when a field is missing on one side or on both" {
-    const without_total = "A_ONE pk 0a0b\nA_ONE sig 1122\nA_ONE remaining 000000000000001e\n" ++
-        "B_TWO pk 0c0d\nB_TWO sig 3344\nB_TWO remaining 00000000000003fe\nB_TWO total 00000000000003ff\n";
+    const without_total = "A_ONE pk 0a0b\nA_ONE sig 1122\nA_ONE verified 01\nA_ONE remaining 000000000000001e\n" ++
+        "B_TWO pk 0c0d\nB_TWO sig 3344\nB_TWO verified 01\nB_TWO remaining 00000000000003fe\nB_TWO total 00000000000003ff\n";
     var report: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer report.deinit();
     var r = try runCompare(.{ .cref_list = list_text, .zref_list = list_text, .cref_out = out_text, .zref_out = without_total }, &report);
@@ -293,11 +293,11 @@ test "compare fails when a field is missing on one side or on both" {
 }
 
 test "compare fails on a dropped algorithm, an unexpected algorithm and output for a skipped name" {
-    const only_a = "A_ONE pk 0a0b\nA_ONE sig 1122\nA_ONE remaining 000000000000001e\nA_ONE total 000000000000001f\n";
+    const only_a = "A_ONE pk 0a0b\nA_ONE sig 1122\nA_ONE verified 01\nA_ONE remaining 000000000000001e\nA_ONE total 000000000000001f\n";
     var report: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer report.deinit();
     var r = try runCompare(.{ .cref_list = list_text, .zref_list = list_text, .cref_out = out_text, .zref_out = only_a }, &report);
-    try std.testing.expectEqual(@as(usize, 4), r.failures);
+    try std.testing.expectEqual(@as(usize, 5), r.failures);
     report.clearRetainingCapacity();
     const extra = out_text ++ "C_THREE pk ff\n";
     r = try runCompare(.{ .cref_list = list_text, .zref_list = list_text, .cref_out = out_text, .zref_out = extra }, &report);
@@ -485,4 +485,40 @@ test "typed signing under the same seed and message twice gives the same pk and 
     defer second.out.deinit(a);
     try std.testing.expectEqualSlices(u8, first.out.pk, second.out.pk);
     try std.testing.expectEqualSlices(u8, first.out.sig, second.out.sig);
+}
+
+// --- Known answers ---------------------------------------------------------
+// The values below come from the C library under the NIST-KAT seed (bytes 0 to
+// 47) and the message `the quick brown fox`. The LMS public key and the
+// digests of the first signatures are the same ones the liboqs-rust tests pin
+// from the C oracle. A digest is the first 32 bytes of SHAKE128, in lower case hex.
+
+fn shakeHex(bytes: []const u8) [64]u8 {
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha3.Shake128.hash(bytes, &digest, .{});
+    var hex: [64]u8 = undefined;
+    _ = std.fmt.bufPrint(&hex, "{x}", .{&digest}) catch unreachable;
+    return hex;
+}
+
+test "typed LMS_SHA256_H5_W8 public key and signature are the known answers of the C library" {
+    const a = std.testing.allocator;
+    const typed = try typedRun(oqs.sig_stfl.LmsSha256H5W8, a);
+    defer typed.out.deinit(a);
+    const pk_hex = "000000010000000500000004056a8c266f9ef97ed08541dbd2e1ffa1bbbc42e0a4141c407bd56a6d260ef91a7cc6d5f8e8bec690ec69cddd1eeeb3c7";
+    var expected_pk: [60]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&expected_pk, pk_hex);
+    try std.testing.expectEqualSlices(u8, &expected_pk, typed.out.pk);
+    const sig_digest = shakeHex(typed.out.sig);
+    try std.testing.expectEqualStrings("ec93edda47cc36596b022f7fb3fa29f59ed81ba8e5240231b86b007a6ebeab3b", &sig_digest);
+}
+
+test "typed XMSS-SHA2_10_256 public key and signature are the known answers of the C library" {
+    const a = std.testing.allocator;
+    const typed = try typedRun(oqs.sig_stfl.XmssSha256H10, a);
+    defer typed.out.deinit(a);
+    const pk_digest = shakeHex(typed.out.pk);
+    try std.testing.expectEqualStrings("73c3485907e3c56d2e9fbffcf81215f4a922ca75407c5bf7bdd0f4e9f7fa64e5", &pk_digest);
+    const sig_digest = shakeHex(typed.out.sig);
+    try std.testing.expectEqualStrings("bd7c22cd19b4b8a145eb5ecbcd91631e20550c49da87858b4b1ed5f4e4d09dd6", &sig_digest);
 }

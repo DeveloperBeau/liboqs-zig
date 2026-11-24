@@ -3,14 +3,14 @@
 //! (algorithm, field) and checks both directions, so a dropped or extra
 //! algorithm or field on either side fails. It also compares the "run" and "skip"
 //! lists, so the two sides must agree on which parameter sets are checked, and
-//! it requires every checked algorithm to carry all four fields.
+//! it requires every checked algorithm to carry all five fields.
 //!
 //! As a program it takes the file paths: cref list, zref list, cref output and
 //! zref output. It prints the result and exits 1 on any mismatch.
 const std = @import("std");
 
 /// The fields every checked algorithm must report on both sides.
-pub const required_fields = [_][]const u8{ "pk", "sig", "remaining", "total" };
+pub const required_fields = [_][]const u8{ "pk", "sig", "verified", "remaining", "total" };
 
 /// The text of the four files the compare reads.
 pub const Inputs = struct {
