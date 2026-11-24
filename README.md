@@ -109,6 +109,8 @@ zig build snapshot     # wrapper output vs the frozen liboqs reference digests
 
 The stateful fuzz test signs several seeded messages per family, then checks that each valid pair verifies and that mutated or swapped pairs do not. It uses a fixed seed. `zig build test --summary all` shows it in the name of the stateful test step, and `-Dfuzz-seed=N` runs it with another seed.
 
+`parity` also checks the stateful signature families (XMSS, XMSS^MT and LMS) through the typed `oqs.sig_stfl` API against the raw C API, after the main compare. For each algorithm it does one keygen and one sign under the shared seed and message, and compares the public key, the signature and the signature counts. This check is separate from the frozen snapshot, which has no stateful lines. By default only parameter sets with a total tree height of 16 or less run, which is 29 of the 70, and each skipped name is printed. Set `OQS_STATEFUL_ALL=1` to run all 70. The stateful harnesses are always built in ReleaseFast.
+
 `parity` runs the full algorithm set, so it is slow (Classic McEliece keygen and SLH-DSA signing dominate). It shards across CPU cores and prints each algorithm as it goes, finishing with an OK or FAILED summary.
 
 ## Which algorithms are built
