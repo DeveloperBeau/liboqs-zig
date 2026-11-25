@@ -4,12 +4,14 @@
 # == shard); per-op KAT re-seeding makes the merge identical to a single full-set
 # run. This preserves complete coverage while cutting wall time to roughly the
 # slowest shard. Per-algorithm progress streams on stderr (inherited from the
-# shards) so a long run visibly advances. Usage: run-shards.sh <cref|zref>
+# shards) so a long run visibly advances. The stateful pair (stfl_cref|stfl_zref)
+# uses the same split. OQS_SHARDS overrides the shard count.
+# Usage: run-shards.sh <cref|zref|stfl_cref|stfl_zref>
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 bin="${1:-}"
-case "$bin" in cref | zref) ;; *) echo "usage: run-shards.sh <cref|zref>" >&2; exit 2 ;; esac
-N="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
+case "$bin" in cref | zref | stfl_cref | stfl_zref) ;; *) echo "usage: run-shards.sh <cref|zref|stfl_cref|stfl_zref>" >&2; exit 2 ;; esac
+N="${OQS_SHARDS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 echo "  ($bin: $N shards, full coverage)" >&2

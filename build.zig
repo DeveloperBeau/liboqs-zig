@@ -41,10 +41,15 @@ fn familyKind(comptime family: []const u8) []const u8 {
     }
 }
 
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+/// The compiled liboqs static library and the assembled `oqs/` include directory.
+const Cliboqs = struct {
+    lib: *std.Build.Step.Compile,
+    include: std.Build.LazyPath,
+};
 
+/// Builds cliboqs (the portable-only slice of liboqs) at the given optimize mode.
+/// The stateful parity harnesses call this a second time at ReleaseFast.
+fn buildCliboqs(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Optimize) Cliboqs {
     // ------------------------------------------------------------------
     // Static C library: cliboqs (portable-only slice of liboqs 0.16.0).
     // ------------------------------------------------------------------
@@ -228,6 +233,16 @@ pub fn build(b: *std.Build) void {
         });
     }
 
+    return .{ .lib = cliboqs, .include = oqs_include };
+}
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const clib = buildCliboqs(b, target, optimize);
+    const cliboqs = clib.lib;
+    const oqs_include = clib.include;
     b.installArtifact(cliboqs);
 
     // ------------------------------------------------------------------
@@ -249,7 +264,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     translate_c.addIncludePath(oqs_include);
-    oqs_mod.addImport("c_api", translate_c.createModule());
+    const c_api_mod = translate_c.createModule();
+    oqs_mod.addImport("c_api", c_api_mod);
 
     const mod_tests = b.addTest(.{ .root_module = oqs_mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);
@@ -294,7 +310,7 @@ pub fn build(b: *std.Build) void {
     const keys_release_mod = b.createModule(.{
         .root_source_file = b.path("src/keys.zig"),
         .target = target,
-        .optimize = .ReleaseFast,
+        .optimize = .fast,
     });
     const keys_release_tests = b.addTest(.{ .root_module = keys_release_mod });
     const run_keys_release_tests = b.addRunArtifact(keys_release_tests);
@@ -341,6 +357,40 @@ pub fn build(b: *std.Build) void {
     run_sig_stfl_tests.setName(b.fmt("run sig_stfl tests (fuzz seed 0x{x})", .{fuzz_seed}));
     test_step.dependOn(&run_sig_stfl_tests.step);
 
+    // Stateful parity tests. They seed the KAT RNG, so they get their own
+    // binary. The raw C API comes in as `c_api` so the tests can compare the
+    // typed wrappers against the C reference. The height filter is the same
+    // module the harnesses use.
+    const stfl_filter_mod = b.createModule(.{
+        .root_source_file = b.path("harness/stfl_filter.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const stfl_compare_mod = b.createModule(.{
+        .root_source_file = b.path("harness/stfl_compare.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    stfl_compare_mod.addImport("stfl_filter", stfl_filter_mod);
+    const stfl_parity_mod = b.createModule(.{
+        .root_source_file = b.path("tests/stfl_parity.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    stfl_parity_mod.addImport("oqs", oqs_mod);
+    stfl_parity_mod.addImport("c_api", c_api_mod);
+    stfl_parity_mod.addImport("stfl_filter", stfl_filter_mod);
+    stfl_parity_mod.addImport("stfl_compare", stfl_compare_mod);
+    const stfl_parity_options = b.addOptions();
+    stfl_parity_options.addOption(u64, "fuzz_seed", fuzz_seed);
+    stfl_parity_mod.addOptions("build_options", stfl_parity_options);
+    const stfl_parity_tests = b.addTest(.{ .root_module = stfl_parity_mod });
+    const run_stfl_parity_tests = b.addRunArtifact(stfl_parity_tests);
+    run_stfl_parity_tests.setName(b.fmt("run stfl_parity tests (fuzz seed 0x{x})", .{fuzz_seed}));
+    // Reads the frozen snapshot from the repo root.
+    run_stfl_parity_tests.setCwd(b.path("."));
+    test_step.dependOn(&run_stfl_parity_tests.step);
+
     // ------------------------------------------------------------------
     // C reference harness: cref
     // ------------------------------------------------------------------
@@ -374,6 +424,63 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(zref);
 
     // ------------------------------------------------------------------
+    // Stateful parity harnesses: stfl_cref (raw C) and stfl_zref (typed
+    // wrappers). They are separate from cref and zref so the frozen snapshot
+    // has no stateful lines. Always ReleaseFast, whatever -Doptimize says,
+    // because height 16 keygen in Debug can take hours.
+    // ------------------------------------------------------------------
+    const stfl_clib = if (optimize == .fast) clib else buildCliboqs(b, target, .fast);
+    const stfl_oqs_mod = b.createModule(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = .fast,
+    });
+    stfl_oqs_mod.linkLibrary(stfl_clib.lib);
+    stfl_oqs_mod.addIncludePath(stfl_clib.include);
+    const stfl_translate_c = b.addTranslateC(.{
+        .root_source_file = b.path("src/c.h"),
+        .target = target,
+        .optimize = .fast,
+    });
+    stfl_translate_c.addIncludePath(stfl_clib.include);
+    stfl_oqs_mod.addImport("c_api", stfl_translate_c.createModule());
+
+    const stfl_cref_mod = b.createModule(.{
+        .target = target,
+        .optimize = .fast,
+        .link_libc = true,
+    });
+    stfl_cref_mod.addCSourceFile(.{ .file = b.path("harness/stfl_cref.c"), .flags = &.{"-std=c11"} });
+    stfl_cref_mod.addIncludePath(stfl_clib.include);
+    stfl_cref_mod.linkLibrary(stfl_clib.lib);
+    const stfl_cref = b.addExecutable(.{ .name = "stfl_cref", .root_module = stfl_cref_mod });
+    b.installArtifact(stfl_cref);
+
+    const stfl_harness_filter_mod = b.createModule(.{
+        .root_source_file = b.path("harness/stfl_filter.zig"),
+        .target = target,
+        .optimize = .fast,
+    });
+    const stfl_zref_mod = b.createModule(.{
+        .root_source_file = b.path("harness/stfl_zref.zig"),
+        .target = target,
+        .optimize = .fast,
+    });
+    stfl_zref_mod.addImport("oqs", stfl_oqs_mod);
+    stfl_zref_mod.addImport("stfl_filter", stfl_harness_filter_mod);
+    const stfl_zref = b.addExecutable(.{ .name = "stfl_zref", .root_module = stfl_zref_mod });
+    b.installArtifact(stfl_zref);
+
+    const stfl_compare_exe_mod = b.createModule(.{
+        .root_source_file = b.path("harness/stfl_compare.zig"),
+        .target = target,
+        .optimize = .fast,
+    });
+    stfl_compare_exe_mod.addImport("stfl_filter", stfl_harness_filter_mod);
+    const stfl_compare_exe = b.addExecutable(.{ .name = "stfl_compare", .root_module = stfl_compare_exe_mod });
+    b.installArtifact(stfl_compare_exe);
+
+    // ------------------------------------------------------------------
     // Parity gate: full-coverage byte-identical diff of cref vs zref.
     // Script-driven (addSystemCommand) so the sharded harnesses stream
     // per-algorithm progress live. A Zig test would buffer it, and a
@@ -384,6 +491,14 @@ pub fn build(b: *std.Build) void {
     run_parity.has_side_effects = true; // always re-run; not cacheable
     const parity_step = b.step("parity", "Full byte-identical parity: C reference vs Zig wrapper");
     parity_step.dependOn(&run_parity.step);
+
+    // The stateful check runs after the 262-algorithm compare. It sits outside
+    // the frozen snapshot. See tools/stateful-parity.sh.
+    const run_stfl_parity = b.addSystemCommand(&.{ "bash", "tools/stateful-parity.sh" });
+    run_stfl_parity.step.dependOn(b.getInstallStep());
+    run_stfl_parity.step.dependOn(&run_parity.step);
+    run_stfl_parity.has_side_effects = true;
+    parity_step.dependOn(&run_stfl_parity.step);
 
     // ------------------------------------------------------------------
     // Snapshot gate: zref output vs frozen liboqs reference digests.
