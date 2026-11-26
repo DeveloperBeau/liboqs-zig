@@ -528,8 +528,10 @@ test "fuzz with a seed from the build: contexts of 0 to 255 bytes verify under t
             }
         }
 
-        // Lengths over 255 give ContextTooLong on both layers, and false on verify.
-        const too_long = context_buf[0 .. 256 + random.uintAtMost(usize, context_buf.len - 256)];
+        // Lengths over 255 give ContextTooLong on both layers, and false on
+        // verify. The first round takes 256, the shortest length that is too long.
+        const too_long_len = if (round == 0) 256 else 256 + random.uintAtMost(usize, context_buf.len - 256);
+        const too_long = context_buf[0..too_long_len];
         random.bytes(too_long);
         try std.testing.expectError(oqs.OqsError.ContextTooLong, p.sig.signWithContext(msg, too_long, p.secret_key));
         try std.testing.expectError(oqs.OqsError.ContextTooLong, typed_kp.secret_key.signWithContext(msg, too_long));
