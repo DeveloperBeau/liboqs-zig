@@ -29,3 +29,36 @@ pub const AlgorithmNames = struct {
         return null;
     }
 };
+
+// Stand-ins for the liboqs list functions. Every liboqs identifier is enabled
+// in this build, so only a stand-in can show that a disabled name is skipped.
+const StandIn = struct {
+    const identifiers = [_][*:0]const u8{ "First-1", "Off-2", "Middle-3", "Off-4", "Last-5" };
+
+    fn identifierAt(i: usize) callconv(.c) [*c]const u8 {
+        return identifiers[i];
+    }
+
+    fn isEnabled(name: [*c]const u8) callconv(.c) c_int {
+        return @intFromBool(!std.mem.startsWith(u8, std.mem.span(@as([*:0]const u8, name)), "Off-"));
+    }
+};
+
+test "next skips the names liboqs reports as disabled, keeps the order and stops after the last one" {
+    var it = AlgorithmNames{
+        .index = 0,
+        .total = StandIn.identifiers.len,
+        .identifierAt = StandIn.identifierAt,
+        .isEnabled = StandIn.isEnabled,
+    };
+    try std.testing.expectEqualStrings("First-1", it.next().?);
+    try std.testing.expectEqualStrings("Middle-3", it.next().?);
+    try std.testing.expectEqualStrings("Last-5", it.next().?);
+    try std.testing.expect(it.next() == null);
+    try std.testing.expect(it.next() == null);
+}
+
+test "next gives nothing for an empty list" {
+    var it = AlgorithmNames{ .index = 0, .total = 0, .identifierAt = StandIn.identifierAt, .isEnabled = StandIn.isEnabled };
+    try std.testing.expect(it.next() == null);
+}
