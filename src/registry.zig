@@ -9,9 +9,19 @@ const SigStflDescription = @import("sig_stfl_description.zig").SigStflDescriptio
 /// The algorithms this build of liboqs enables, with their names and what liboqs reports about each one.
 ///
 /// Every name list comes from the liboqs identifier lists, filtered by the
-/// liboqs enabled check, in liboqs order. A name matches only when it equals
-/// a liboqs name byte for byte. liboqs itself ignores case when it looks a
-/// name up, so `oqs.Kem.init` accepts `ml-kem-768`, but the registry does not.
+/// liboqs enabled check, in liboqs order.
+///
+/// Name matching follows liboqs. liboqs compares names with `strcasecmp`
+/// (`_stricmp` on Windows), so case is ignored for the ASCII letters A to Z
+/// only. Every other byte must be equal, and the lengths must be equal.
+/// So `ml-kem-768` matches `ML-KEM-768`, as it does for `oqs.Kem.init`.
+/// A description always carries the liboqs name, such as `ML-KEM-768`, not
+/// the name that was passed in.
+///
+/// A name that holds a zero byte never matches. C would stop reading at that
+/// byte, so liboqs would see a shorter name. Here the whole slice is compared,
+/// and no liboqs name holds a zero byte. A Zig slice cannot be null, so the
+/// liboqs null checks have no match here.
 pub const Registry = struct {
     /// The names of the enabled key encapsulation mechanisms, in liboqs order.
     pub fn kemNames() AlgorithmNames {
@@ -43,25 +53,26 @@ pub const Registry = struct {
         return count(sig_stfl_kind);
     }
 
-    /// True if `name` is exactly the liboqs name of a key encapsulation mechanism this build enables.
+    /// True if `name` is the liboqs name of a key encapsulation mechanism this build enables, ignoring ASCII case.
     pub fn isKemEnabled(name: []const u8) bool {
         return enabledIdentifier(kem_kind, name) != null;
     }
 
-    /// True if `name` is exactly the liboqs name of a signature scheme this build enables.
+    /// True if `name` is the liboqs name of a signature scheme this build enables, ignoring ASCII case.
     pub fn isSigEnabled(name: []const u8) bool {
         return enabledIdentifier(sig_kind, name) != null;
     }
 
-    /// True if `name` is exactly the liboqs name of a stateful signature scheme this build enables.
+    /// True if `name` is the liboqs name of a stateful signature scheme this build enables, ignoring ASCII case.
     pub fn isSigStflEnabled(name: []const u8) bool {
         return enabledIdentifier(sig_stfl_kind, name) != null;
     }
 
     /// What liboqs reports about the key encapsulation mechanism named `name`.
     ///
-    /// Returns null when `name` is not exactly the name of an enabled mechanism,
-    /// or when liboqs cannot allocate its algorithm object.
+    /// `name` matches ignoring ASCII case, and the description carries the
+    /// liboqs name. Returns null when `name` is not the name of an enabled
+    /// mechanism, or when liboqs cannot allocate its algorithm object.
     pub fn kemDescription(name: []const u8) ?KemDescription {
         const identifier = enabledIdentifier(kem_kind, name) orelse return null;
         const kem: *c.OQS_KEM = c.OQS_KEM_new(identifier) orelse return null;
@@ -82,8 +93,9 @@ pub const Registry = struct {
 
     /// What liboqs reports about the signature scheme named `name`.
     ///
-    /// Returns null when `name` is not exactly the name of an enabled scheme,
-    /// or when liboqs cannot allocate its algorithm object.
+    /// `name` matches ignoring ASCII case, and the description carries the
+    /// liboqs name. Returns null when `name` is not the name of an enabled
+    /// scheme, or when liboqs cannot allocate its algorithm object.
     pub fn sigDescription(name: []const u8) ?SigDescription {
         const identifier = enabledIdentifier(sig_kind, name) orelse return null;
         const sig: *c.OQS_SIG = c.OQS_SIG_new(identifier) orelse return null;
@@ -103,8 +115,9 @@ pub const Registry = struct {
 
     /// What liboqs reports about the stateful signature scheme named `name`.
     ///
-    /// Returns null when `name` is not exactly the name of an enabled scheme,
-    /// or when liboqs cannot allocate its algorithm object.
+    /// `name` matches ignoring ASCII case, and the description carries the
+    /// liboqs name. Returns null when `name` is not the name of an enabled
+    /// scheme, or when liboqs cannot allocate its algorithm object.
     pub fn sigStflDescription(name: []const u8) ?SigStflDescription {
         const identifier = enabledIdentifier(sig_stfl_kind, name) orelse return null;
         const sig: *c.OQS_SIG_STFL = c.OQS_SIG_STFL_new(identifier) orelse return null;
@@ -162,13 +175,14 @@ fn count(kind: Kind) usize {
     return n;
 }
 
-// The liboqs identifier that equals `name` byte for byte, if this build
-// enables it. The match is done here, not by liboqs, because liboqs compares
-// names with strcasecmp.
+// The enabled liboqs identifier that equals `name` when ASCII case is
+// ignored, as strcasecmp does. The match is done here over the whole slice,
+// so a zero byte inside `name` is compared, not taken as the end. The
+// identifier is returned, not `name`, so liboqs gets its own string.
 fn enabledIdentifier(kind: Kind, name: []const u8) ?[*:0]const u8 {
     var it = names(kind);
     while (it.next()) |candidate| {
-        if (std.mem.eql(u8, candidate, name)) return candidate.ptr;
+        if (std.ascii.eqlIgnoreCase(candidate, name)) return candidate.ptr;
     }
     return null;
 }

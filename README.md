@@ -80,7 +80,7 @@ const n = oqs.Registry.enabledSigCount();      // 221
 const on = oqs.Registry.isKemEnabled("ML-KEM-768");
 ```
 
-`kemDescription`, `sigDescription` and `sigStflDescription` return a `KemDescription`, `SigDescription` or `SigStflDescription`, or null when the name is not enabled. A name must match the liboqs name exactly, case included. The runtime cores (`oqs.Kem.init` and the others) pass the name to liboqs, which ignores case. The name and version strings in a description point at static liboqs strings and need no freeing.
+`kemDescription`, `sigDescription` and `sigStflDescription` return a `KemDescription`, `SigDescription` or `SigStflDescription`, or null when the name is not enabled. Name matching follows liboqs, which compares names with `strcasecmp`. Case is ignored for the ASCII letters only, and every other byte must match, so `ml-kem-768` finds `ML-KEM-768` here and in `oqs.Kem.init`. A description always carries the liboqs name, such as `ML-KEM-768`, whatever case was passed in. A name that holds a zero byte never matches, even though C would stop reading at that byte. The name and version strings in a description point at static liboqs strings and need no freeing.
 
 ## Errors
 

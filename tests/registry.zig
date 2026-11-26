@@ -270,18 +270,27 @@ const misuses = [_]struct { kem: []const u8, sig: []const u8, sig_stfl: []const 
     .{ .kem = "ML-KEM-768 ", .sig = "ML-DSA-65 ", .sig_stfl = "LMS_SHA256_H5_W8 " },
     // Leading space.
     .{ .kem = " ML-KEM-768", .sig = " ML-DSA-65", .sig_stfl = " LMS_SHA256_H5_W8" },
-    // Lowercase. liboqs compares names ignoring case, the registry does not.
-    .{ .kem = "ml-kem-768", .sig = "ml-dsa-65", .sig_stfl = "lms_sha256_h5_w8" },
+    // Lowercase with a trailing space. Case is ignored, the space is not.
+    .{ .kem = "ml-kem-768 ", .sig = "ml-dsa-65 ", .sig_stfl = "lms_sha256_h5_w8 " },
     // A prefix of an enabled name.
     .{ .kem = "ML-KEM-76", .sig = "ML-DSA-6", .sig_stfl = "LMS_SHA256_H5_W" },
+    // A mixed-case prefix of an enabled name.
+    .{ .kem = "ml-KEM-76", .sig = "Ml-dSa-6", .sig_stfl = "lms_SHA256_h5_w" },
     // An enabled name with more after a nul byte, which C would cut off.
     .{ .kem = "ML-KEM-768\x00", .sig = "ML-DSA-65\x00x", .sig_stfl = "LMS_SHA256_H5_W8\x00" },
+    .{ .kem = "ml-kem-768\x00", .sig = "ml-dsa-65\x00", .sig_stfl = "lms_sha256_h5_w8\x00X" },
+    // A digit or punctuation byte off by 0x20, the bit that ASCII case
+    // changes for letters. Only letters are folded.
+    .{ .kem = "ML\rKEM-768", .sig = "ML-DSA\r65", .sig_stfl = "LMS\x7fSHA256_H5_W8" },
+    .{ .kem = "ML-KEM-\x17\x16\x18", .sig = "ML-DSA-\x16\x15", .sig_stfl = "LMS_SHA256_H\x15_W\x18" },
+    // A byte of an enabled name with the high bit set, which is not ASCII.
+    .{ .kem = "ML\xadKEM-768", .sig = "\xcdL-DSA-65", .sig_stfl = "LMS_SHA256_H5_W\xb8" },
     // A name of another kind.
     .{ .kem = "ML-DSA-65", .sig = "ML-KEM-768", .sig_stfl = "ML-DSA-65" },
     .{ .kem = "XMSS-SHA2_10_256", .sig = "LMS_SHA256_H5_W8", .sig_stfl = "ML-KEM-768" },
 };
 
-test "lookup returns null for an empty, padded, lowercase, truncated, nul-extended or other-kind name" {
+test "lookup returns null for an empty, padded, truncated, nul-extended, non-letter-folded or other-kind name" {
     for (misuses) |m| {
         try std.testing.expect(Registry.kemDescription(m.kem) == null);
         try std.testing.expect(!Registry.isKemEnabled(m.kem));
@@ -292,11 +301,42 @@ test "lookup returns null for an empty, padded, lowercase, truncated, nul-extend
     }
 }
 
-test "the runtime cores still take a name in any case, as liboqs does, while the registry does not" {
+// --- Case ------------------------------------------------------------------
+
+test "a lookup ignores ASCII case and the description carries the liboqs name" {
+    try std.testing.expect(Registry.isKemEnabled("ml-kem-768"));
+    try std.testing.expectEqualStrings("ML-KEM-768", Registry.kemDescription("ml-kem-768").?.name);
+    try std.testing.expect(Registry.isSigEnabled("Ml-Dsa-65"));
+    try std.testing.expectEqualStrings("ML-DSA-65", Registry.sigDescription("Ml-Dsa-65").?.name);
+    try std.testing.expect(Registry.isSigStflEnabled("lms_Sha256_h5_W8"));
+    try std.testing.expectEqualStrings("LMS_SHA256_H5_W8", Registry.sigStflDescription("lms_Sha256_h5_W8").?.name);
+    // A name that liboqs writes in lowercase, looked up in uppercase.
+    try std.testing.expect(Registry.isSigEnabled("CROSS-RSDP-128-BALANCED"));
+    try std.testing.expectEqualStrings("cross-rsdp-128-balanced", Registry.sigDescription("CROSS-RSDP-128-BALANCED").?.name);
+}
+
+test "a name in another case gives the same description as the liboqs name" {
+    const upper = Registry.kemDescription("ML-KEM-768").?;
+    const lower = Registry.kemDescription("ml-kem-768").?;
+    try std.testing.expectEqual(upper.name.ptr, lower.name.ptr);
+    try std.testing.expectEqual(upper.publicKeyLength, lower.publicKeyLength);
+    try std.testing.expectEqual(upper.ciphertextLength, lower.ciphertextLength);
+}
+
+test "the runtime cores and the registry both take a name in any case, as liboqs does" {
     var kem = try oqs.Kem.init(std.testing.allocator, "ml-kem-768");
     defer kem.deinit();
-    try std.testing.expectEqual(@as(usize, 1184), kem.lengthPublicKey());
-    try std.testing.expect(Registry.kemDescription("ml-kem-768") == null);
+    const d = Registry.kemDescription("ml-kem-768").?;
+    try std.testing.expectEqual(d.publicKeyLength, kem.lengthPublicKey());
+}
+
+test "a name with a zero byte never matches, even when the bytes before it are an enabled name" {
+    // C would stop at the zero byte and match ML-KEM-768. The registry
+    // compares the whole slice, so the zero byte is a difference.
+    try std.testing.expect(!Registry.isKemEnabled("ML-KEM-768\x00"));
+    try std.testing.expect(Registry.kemDescription("ml-kem-768\x00") == null);
+    try std.testing.expect(!Registry.isSigEnabled("ML-DSA-65\x00ML-DSA-65"));
+    try std.testing.expect(Registry.sigStflDescription("\x00LMS_SHA256_H5_W8") == null);
 }
 
 // --- Fuzz -----------------------------------------------------------------
@@ -327,7 +367,30 @@ fn lookUp(kind: Kind, name: []const u8) !?[]const u8 {
 // The seed comes from build.zig (default 0x5717f022, override with
 // -Dfuzz-seed=N). The test prints it at the start and in every failure
 // message, and the run step name carries it too.
-test "fuzz with a seed from the build: every listed name is found, and mutated or swapped names are found only when they are listed" {
+// A copy of `name` with the case of each ASCII letter picked at random.
+fn randomCase(rand: std.Random, name: []const u8, out: []u8) []u8 {
+    for (name, 0..) |ch, i| {
+        out[i] = if (!std.ascii.isAlphabetic(ch)) ch else if (rand.boolean()) std.ascii.toUpper(ch) else std.ascii.toLower(ch);
+    }
+    return out[0..name.len];
+}
+
+// The listed name that equals `name` when ASCII case is ignored, or null.
+// Written out with a byte loop, not with the std helper the registry uses.
+fn listHolds(list: []const []const u8, name: []const u8) ?[]const u8 {
+    outer: for (list) |entry| {
+        if (entry.len != name.len) continue;
+        for (entry, name) |a, b| {
+            const fa = if (a >= 'A' and a <= 'Z') a + 32 else a;
+            const fb = if (b >= 'A' and b <= 'Z') b + 32 else b;
+            if (fa != fb) continue :outer;
+        }
+        return entry;
+    }
+    return null;
+}
+
+test "fuzz with a seed from the build: every listed name in any case is found as the listed name, and mutated or swapped names are found only when they are listed" {
     const seed: u64 = build_options.fuzz_seed;
     std.debug.print("fuzz seed 0x{x}\n", .{seed});
     var prng = std.Random.DefaultPrng.init(seed);
@@ -343,29 +406,47 @@ test "fuzz with a seed from the build: every listed name is found, and mutated o
         }
     }
 
-    // False negatives: every listed name is found under its own kind.
+    // False negatives: every listed name, as listed, all lowercase, all
+    // uppercase and in four random cases, is found under its own kind and
+    // gives back the listed name.
+    var buf: [128]u8 = undefined;
     for (kinds, 0..) |kind, k| {
         for (lists[k][0..lengths[k]]) |name| {
-            const found = (try lookUp(kind, name)) orelse {
-                std.debug.print("listed name {s} was not found (seed 0x{x})\n", .{ name, seed });
-                return error.TestUnexpectedResult;
-            };
-            try std.testing.expectEqualStrings(name, found);
+            var variant: usize = 0;
+            while (variant < 7) : (variant += 1) {
+                const asked: []const u8 = switch (variant) {
+                    0 => name,
+                    1 => std.ascii.lowerString(&buf, name),
+                    2 => std.ascii.upperString(&buf, name),
+                    else => randomCase(rand, name, &buf),
+                };
+                const found = (try lookUp(kind, asked)) orelse {
+                    std.debug.print("listed name {s} asked as {s} was not found (seed 0x{x})\n", .{ name, asked, seed });
+                    return error.TestUnexpectedResult;
+                };
+                if (!std.mem.eql(u8, name, found)) {
+                    std.debug.print("listed name {s} asked as {s} gave {s} (seed 0x{x})\n", .{ name, asked, found, seed });
+                    return error.TestUnexpectedResult;
+                }
+            }
         }
     }
 
     // False positives: a mutated name, or a name looked up under another
-    // kind, is found only when the list of that kind holds it exactly.
-    const rounds = 400;
-    var buf: [128]u8 = undefined;
+    // kind, is found only when the list of that kind holds it ignoring
+    // ASCII case, and then gives back the listed name.
+    const rounds = 2000;
     var round: usize = 0;
     while (round < rounds) : (round += 1) {
         const from = rand.uintLessThan(usize, kinds.len);
         const original = lists[from][rand.uintLessThan(usize, lengths[from])];
         var len = original.len;
         @memcpy(buf[0..len], original);
+        // Start from a random case of the name, so that every mutation
+        // below also meets mixed case.
+        _ = randomCase(rand, original, &buf);
         var into = from;
-        switch (rand.uintLessThan(u8, 5)) {
+        switch (rand.uintLessThan(u8, 7)) {
             // Flip one byte.
             0 => buf[rand.uintLessThan(usize, len)] ^= rand.intRangeAtMost(u8, 1, 255),
             // Cut the name short.
@@ -376,24 +457,32 @@ test "fuzz with a seed from the build: every listed name is found, and mutated o
                 rand.bytes(buf[len .. len + extra]);
                 len += extra;
             },
-            // Change the case of one letter, if there is one.
-            3 => {
-                const at = rand.uintLessThan(usize, len);
-                if (std.ascii.isAlphabetic(buf[at])) buf[at] ^= 0x20;
+            // Flip bit 0x20 of one byte that is not a letter, if it is one.
+            // For a letter that is a case change, which must still match.
+            3 => buf[rand.uintLessThan(usize, len)] ^= 0x20,
+            // Replace one byte with a byte outside ASCII.
+            4 => buf[rand.uintLessThan(usize, len)] = rand.intRangeAtMost(u8, 0x80, 0xff),
+            // Put a zero byte in, or at the end.
+            5 => {
+                const at = rand.uintLessThan(usize, len + 1);
+                if (at == len) len += 1;
+                buf[at] = 0;
             },
             // Keep the name but look it up under another kind.
             else => into = (from + rand.intRangeAtMost(usize, 1, kinds.len - 1)) % kinds.len,
         }
         const mutated = buf[0..len];
-        var expected = false;
-        for (lists[into][0..lengths[into]]) |name| {
-            if (std.mem.eql(u8, name, mutated)) expected = true;
-        }
+        const expected = listHolds(lists[into][0..lengths[into]], mutated);
         const found = try lookUp(kinds[into], mutated);
-        if ((found != null) != expected) {
-            std.debug.print("mutated name {s} (from {s}) under {s}: found {}, listed {} (seed 0x{x}, round {d})\n", .{ mutated, original, @tagName(kinds[into]), found != null, expected, seed, round });
+        if ((found != null) != (expected != null)) {
+            std.debug.print("mutated name {s} (from {s}) under {s}: found {}, listed {} (seed 0x{x}, round {d})\n", .{ mutated, original, @tagName(kinds[into]), found != null, expected != null, seed, round });
             return error.TestUnexpectedResult;
         }
-        if (found) |name| try std.testing.expectEqualStrings(mutated, name);
+        if (found) |name| {
+            if (!std.mem.eql(u8, expected.?, name)) {
+                std.debug.print("mutated name {s} (from {s}) gave {s}, listed {s} (seed 0x{x}, round {d})\n", .{ mutated, original, name, expected.?, seed, round });
+                return error.TestUnexpectedResult;
+            }
+        }
     }
 }
