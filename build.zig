@@ -285,7 +285,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_smoke_tests.step);
 
     // Seed for the stateful fuzz tests, shared by the core and typed runs.
-    const fuzz_seed = b.option(u64, "fuzz-seed", "Seed for the stateful signature fuzz test") orelse 0x5717_F022;
+    const fuzz_seed = b.option(u64, "fuzz-seed", "Seed for the fuzz tests") orelse 0x5717_F022;
 
     // Typed-API tests: registry gate + namespace round-trips + type safety.
     const typed_mod = b.createModule(.{
@@ -302,6 +302,21 @@ pub fn build(b: *std.Build) void {
     const run_typed_tests = b.addRunArtifact(typed_tests);
     run_typed_tests.setName(b.fmt("run typed tests (fuzz seed 0x{x})", .{fuzz_seed}));
     test_step.dependOn(&run_typed_tests.step);
+
+    // Registry tests: name lists, enabled checks, lookup and the lookup fuzz.
+    const registry_mod = b.createModule(.{
+        .root_source_file = b.path("tests/registry.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    registry_mod.addImport("oqs", oqs_mod);
+    const registry_options = b.addOptions();
+    registry_options.addOption(u64, "fuzz_seed", fuzz_seed);
+    registry_mod.addOptions("build_options", registry_options);
+    const registry_tests = b.addTest(.{ .root_module = registry_mod });
+    const run_registry_tests = b.addRunArtifact(registry_tests);
+    run_registry_tests.setName(b.fmt("run registry tests (fuzz seed 0x{x})", .{fuzz_seed}));
+    test_step.dependOn(&run_registry_tests.step);
 
     // Secret-zeroing test, also run at ReleaseFast. The main test run builds
     // keys.zig in the chosen mode, Debug by default. This run checks the wipe
