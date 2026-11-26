@@ -62,6 +62,30 @@ const ok = try sk.public_key.isValidSignature("message", sig.bytes);
 
 The wrappers (`oqs.kem.*`, `oqs.sig.*`) are generated from liboqs' own headers for every enabled algorithm: 41 KEMs and 221 signature variants, including the full SLH-DSA matrix. A runtime, name-based API (`oqs.Kem`, `oqs.Sig`) is also available.
 
+## Algorithm names and metadata
+
+`oqs.Registry` lists the algorithms this build enables, in liboqs order, and reports what liboqs knows about each one. The lists come from liboqs itself and allocate nothing.
+
+```zig
+var names = oqs.Registry.kemNames();
+while (names.next()) |name| {
+    const d = oqs.Registry.kemDescription(name).?;
+    std.debug.print("{s}: level {d}, public key {d} bytes\n", .{ d.name, d.claimedNistLevel, d.publicKeyLength });
+}
+
+if (oqs.Registry.sigDescription("ML-DSA-65")) |d| {
+    std.debug.print("{s} takes a context string: {}\n", .{ d.name, d.supportsContext });
+}
+const n = oqs.Registry.enabledSigCount();      // 221
+const on = oqs.Registry.isKemEnabled("ML-KEM-768");
+```
+
+`kemDescription`, `sigDescription` and `sigStflDescription` return a `KemDescription`, `SigDescription` or `SigStflDescription`, or null when the name is not enabled. A name must match the liboqs name exactly, case included. The runtime cores (`oqs.Kem.init` and the others) pass the name to liboqs, which ignores case. The name and version strings in a description point at static liboqs strings and need no freeing.
+
+## Errors
+
+Every operation returns `oqs.OqsError`. `oqs.describeError(err)` gives a short plain text for each member. `ContextNotSupported`, `ContextTooLong`, `SeedNotSupported` and `PersistenceFailed` are part of the set, but nothing returns them yet. Zig errors carry no payload, so `InvalidKeySize` does not say which length was expected.
+
 ## Stateful signatures
 
 The build includes the stateful hash-based signature families from liboqs: 21 XMSS, 16 XMSS^MT and 33 LMS variants, 70 in all. Each key pair can sign only a fixed number of times. `oqs.SigStfl` is the runtime, name-based core for them. `sign` takes the secret key state, and liboqs advances the signature index inside it.
@@ -79,7 +103,7 @@ const ok = try alg.verify("message", sig, kp.public_key);
 const left = try alg.sigsRemaining(kp.secret_key);
 ```
 
-For a tree of height h, liboqs reports `sigsTotal` as 2^h - 1. As in liboqs, a key makes `sigsTotal` + 1 signatures, and the last one is made when `sigsRemaining` already reads 0. For XMSS that last signature uses wiped key material and does not verify. After it, `sign` returns `error.SignFailed` and no signature. `sign` also returns `error.SignFailed` whenever liboqs reports an error, and never hands back a signature in that case. `oqs.isSigStflEnabled(name)` and `oqs.enabledSigStflCount()` report what is compiled in.
+For a tree of height h, liboqs reports `sigsTotal` as 2^h - 1. As in liboqs, a key makes `sigsTotal` + 1 signatures, and the last one is made when `sigsRemaining` already reads 0. For XMSS that last signature uses wiped key material and does not verify. After it, `sign` returns no signature. For LMS liboqs reports success with no signature, and `sign` returns `error.KeyExhausted`. For XMSS and XMSS^MT liboqs reports an error, and `sign` returns `error.SignFailed`. `sign` returns `error.SignFailed` whenever liboqs reports an error, and never hands back a signature in that case. `oqs.Registry.isSigStflEnabled(name)` and `oqs.Registry.enabledSigStflCount()` report what is compiled in.
 
 The core keeps the key state in memory only and writes nothing to storage, so a key pair cannot sign again after the process exits. A `SigStflSecretKey` value points at one liboqs key state. A copy of the value shares that state, so signing through either copy takes the next index. Call `deinit` on one copy only.
 
@@ -102,12 +126,12 @@ The typed secret key has no import or export, because the core cannot save or re
 
 ```sh
 zig build              # build the static C library and the oqs module
-zig build test         # unit, smoke, typed-API, functional, concurrency, and stateful tests
+zig build test         # unit, smoke, typed-API, registry, functional, concurrency, and stateful tests
 zig build parity       # every algorithm: C reference vs Zig wrapper, byte-identical
 zig build snapshot     # wrapper output vs the frozen liboqs reference digests
 ```
 
-The stateful fuzz test signs several seeded messages per family, then checks that each valid pair verifies and that mutated or swapped pairs do not. It uses a fixed seed. `zig build test --summary all` shows it in the name of the stateful test step, and `-Dfuzz-seed=N` runs it with another seed.
+The stateful fuzz test signs several seeded messages per family, then checks that each valid pair verifies and that mutated or swapped pairs do not. The registry fuzz test looks up every listed name, then mutated names and names of the wrong kind, and checks that only listed names are found. Both use a fixed seed. `zig build test --summary all` shows it in the names of the test steps, and `-Dfuzz-seed=N` runs them with another seed.
 
 `parity` also checks the stateful signature families (XMSS, XMSS^MT and LMS) through the typed `oqs.sig_stfl` API against the raw C API, after the main compare. For each algorithm it does one keygen and one sign under the shared seed and message, and compares the public key, the signature and the signature counts. This check is separate from the frozen snapshot, which has no stateful lines. By default only parameter sets with a total tree height of 16 or less run, which is 29 of the 70, and each skipped name is printed. Set `OQS_STATEFUL_ALL=1` to run all 70. The stateful harnesses are always built in ReleaseFast.
 
