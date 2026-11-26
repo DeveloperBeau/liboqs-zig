@@ -213,7 +213,7 @@ test "sigsTotal is 2^h - 1 and sigsRemaining drops by exactly one per signature"
 // liboqs makes sigsTotal + 1 signatures per key. The last one is made when
 // sigsRemaining already reads 0. The expected values below are what liboqs
 // 0.16.0 does through this wrapper, checked by hand before they were written.
-test "LMS_SHA256_H5_W1 makes 32 signatures, the 32nd at sigsRemaining 0 verifies, then the counts are unreadable and sign fails with SignFailed" {
+test "LMS_SHA256_H5_W1 makes 32 signatures, the 32nd at sigsRemaining 0 verifies, then the counts are unreadable and sign fails with KeyExhausted" {
     var f = try Fixture.init(lms_h5_w1.name);
     defer f.deinit();
     try std.testing.expectEqual(lms_h5_w1.signature, f.sig.lengthSignatureMax());
@@ -232,14 +232,14 @@ test "LMS_SHA256_H5_W1 makes 32 signatures, the 32nd at sigsRemaining 0 verifies
     try std.testing.expectError(oqs.OqsError.InvalidKeySize, f.sig.sigsRemaining(f.secret_key));
     try std.testing.expectError(oqs.OqsError.InvalidKeySize, f.sig.sigsTotal(f.secret_key));
     // liboqs reports success here without writing a signature. The wrapper
-    // turns that into SignFailed. An error union carries no slice, and
+    // turns that into KeyExhausted. An error union carries no slice, and
     // std.testing.allocator fails the test on any leaked signature buffer.
-    try std.testing.expectError(oqs.OqsError.SignFailed, f.sig.sign(message, &f.secret_key));
-    try std.testing.expectError(oqs.OqsError.SignFailed, f.sig.sign(message, &f.secret_key));
+    try std.testing.expectError(oqs.OqsError.KeyExhausted, f.sig.sign(message, &f.secret_key));
+    try std.testing.expectError(oqs.OqsError.KeyExhausted, f.sig.sign(message, &f.secret_key));
     try std.testing.expectError(oqs.OqsError.InvalidKeySize, f.sig.sigsRemaining(f.secret_key));
 }
 
-test "XMSS-SHA2_10_256 makes 1024 signatures, the 1024th at sigsRemaining 0 does not verify, sigsRemaining then wraps to 2^64 - 1, and the next sign fails with SignFailed" {
+test "XMSS-SHA2_10_256 makes 1024 signatures, the 1024th at sigsRemaining 0 does not verify, sigsRemaining then wraps to 2^64 - 1, and the next sign fails with SignFailed, not KeyExhausted" {
     var f = try Fixture.init(xmss_h10.name);
     defer f.deinit();
     var i: u64 = 0;
@@ -266,6 +266,7 @@ test "XMSS-SHA2_10_256 makes 1024 signatures, the 1024th at sigsRemaining 0 does
     try std.testing.expectEqual(@as(u64, 18446744073709551615), try f.sig.sigsRemaining(f.secret_key));
     try std.testing.expectEqual(@as(u64, 1023), try f.sig.sigsTotal(f.secret_key));
 
+    // XMSS reports an error status here, unlike LMS, so it stays SignFailed.
     try std.testing.expectError(oqs.OqsError.SignFailed, f.sig.sign(message, &f.secret_key));
 }
 

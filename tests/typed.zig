@@ -248,7 +248,7 @@ test "an LMS H5 W8 public key imported under LMS H5 W1 verifies a genuine H5 W8 
     try std.testing.expect(!try as_w1.isValidSignature("tampered", s.bytes));
 }
 
-test "LMS_SHA256_H5_W1 typed key makes 32 signatures, the 32nd at sigsRemaining 0 verifies, then sign fails with SignFailed" {
+test "LMS_SHA256_H5_W1 typed key makes 32 signatures, the 32nd at sigsRemaining 0 verifies, then sign fails with KeyExhausted" {
     const a = std.testing.allocator;
     var kp = try LmsW1.generateKeyPair(a);
     defer kp.public_key.deinit();
@@ -269,10 +269,10 @@ test "LMS_SHA256_H5_W1 typed key makes 32 signatures, the 32nd at sigsRemaining 
     try std.testing.expectEqual(@as(u32, 31), std.mem.readInt(u32, last.bytes[4..8], .big));
     try std.testing.expect(try kp.public_key.isValidSignature(message, last.bytes));
 
-    // A used-up key returns SignFailed and no signature. The testing
+    // A used-up key returns KeyExhausted and no signature. The testing
     // allocator fails the test if one were allocated and not freed.
-    try std.testing.expectError(oqs.OqsError.SignFailed, kp.secret_key.sign(message));
-    try std.testing.expectError(oqs.OqsError.SignFailed, kp.secret_key.sign(message));
+    try std.testing.expectError(oqs.OqsError.KeyExhausted, kp.secret_key.sign(message));
+    try std.testing.expectError(oqs.OqsError.KeyExhausted, kp.secret_key.sign(message));
 }
 
 // The seed comes from build.zig (default 0x5717f022, override with

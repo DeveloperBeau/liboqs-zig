@@ -3,6 +3,8 @@ const init = @import("init.zig");
 
 pub const ensureInitialized = init.ensure;
 pub const OqsError = @import("errors.zig").OqsError;
+/// A short plain text that says what an `OqsError` means.
+pub const describeError = @import("errors.zig").describeError;
 
 pub const Kem = @import("kem.zig").Kem;
 pub const Sig = @import("sig.zig").Sig;
@@ -85,6 +87,7 @@ pub const version = "0.16.0";
 
 test {
     _ = init;
+    _ = @import("errors.zig");
     _ = @import("rng.zig");
     _ = @import("kem.zig");
     _ = @import("sig.zig");

@@ -242,7 +242,9 @@ pub fn Sig(comptime spec: SigInfo) type {
 ///
 /// As in liboqs, one key makes `sigsTotal` + 1 signatures, and the last one is
 /// made when `sigsRemaining` is already 0. For XMSS that last signature does
-/// not verify. After it, `sign` returns `SignFailed` and no signature.
+/// not verify. After it, `sign` returns no signature. An LMS key returns
+/// `KeyExhausted` and an XMSS key returns `SignFailed`, because liboqs reports
+/// success with no signature for LMS and an error status for XMSS.
 pub fn SigStfl(comptime spec: SigStflInfo) type {
     return struct {
         pub const algorithm_name = spec.name;
@@ -305,7 +307,8 @@ pub fn SigStfl(comptime spec: SigStflInfo) type {
 
             /// Sign `message` with the next index and advance the key state.
             /// Caller owns the returned signature, allocated with the key's
-            /// allocator. Returns `SignFailed` once the key is used up.
+            /// allocator. Once the key is used up it returns `KeyExhausted`
+            /// for LMS and `SignFailed` for XMSS, as `oqs.SigStfl.sign` does.
             pub fn sign(self: *SecretKey, message: []const u8) OqsError!Signature {
                 var s = try core_sig_stfl.init(self.allocator, spec.name);
                 defer s.deinit();
