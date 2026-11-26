@@ -11,28 +11,28 @@ const build_options = @import("build_options");
 test "every KEM wrapper names a runtime-enabled algorithm" {
     comptime var count: usize = 0;
     inline for (@typeInfo(oqs.kem).@"struct".decl_names) |d_name| {
-        try std.testing.expect(oqs.isKemEnabled(@field(oqs.kem, d_name).info.name));
+        try std.testing.expect(oqs.Registry.isKemEnabled(@field(oqs.kem, d_name).info.name));
         count += 1;
     }
-    try std.testing.expectEqual(oqs.enabledKemCount(), count);
+    try std.testing.expectEqual(oqs.Registry.enabledKemCount(), count);
 }
 
 test "every SIG wrapper names a runtime-enabled algorithm" {
     comptime var count: usize = 0;
     inline for (@typeInfo(oqs.sig).@"struct".decl_names) |d_name| {
-        try std.testing.expect(oqs.isSigEnabled(@field(oqs.sig, d_name).info.name));
+        try std.testing.expect(oqs.Registry.isSigEnabled(@field(oqs.sig, d_name).info.name));
         count += 1;
     }
-    try std.testing.expectEqual(oqs.enabledSigCount(), count);
+    try std.testing.expectEqual(oqs.Registry.enabledSigCount(), count);
 }
 
 test "every stateful wrapper names a runtime-enabled algorithm and the count is 70" {
     comptime var count: usize = 0;
     inline for (@typeInfo(oqs.sig_stfl).@"struct".decl_names) |d_name| {
-        try std.testing.expect(oqs.isSigStflEnabled(@field(oqs.sig_stfl, d_name).info.name));
+        try std.testing.expect(oqs.Registry.isSigStflEnabled(@field(oqs.sig_stfl, d_name).info.name));
         count += 1;
     }
-    try std.testing.expectEqual(oqs.enabledSigStflCount(), count);
+    try std.testing.expectEqual(oqs.Registry.enabledSigStflCount(), count);
     // 21 XMSS, 16 XMSS^MT and 33 LMS, written out by hand.
     try std.testing.expectEqual(@as(usize, 70), count);
 }
@@ -248,7 +248,7 @@ test "an LMS H5 W8 public key imported under LMS H5 W1 verifies a genuine H5 W8 
     try std.testing.expect(!try as_w1.isValidSignature("tampered", s.bytes));
 }
 
-test "LMS_SHA256_H5_W1 typed key makes 32 signatures, the 32nd at sigsRemaining 0 verifies, then sign fails with SignFailed" {
+test "LMS_SHA256_H5_W1 typed key makes 32 signatures, the 32nd at sigsRemaining 0 verifies, then sign fails with KeyExhausted" {
     const a = std.testing.allocator;
     var kp = try LmsW1.generateKeyPair(a);
     defer kp.public_key.deinit();
@@ -269,10 +269,10 @@ test "LMS_SHA256_H5_W1 typed key makes 32 signatures, the 32nd at sigsRemaining 
     try std.testing.expectEqual(@as(u32, 31), std.mem.readInt(u32, last.bytes[4..8], .big));
     try std.testing.expect(try kp.public_key.isValidSignature(message, last.bytes));
 
-    // A used-up key returns SignFailed and no signature. The testing
+    // A used-up key returns KeyExhausted and no signature. The testing
     // allocator fails the test if one were allocated and not freed.
-    try std.testing.expectError(oqs.OqsError.SignFailed, kp.secret_key.sign(message));
-    try std.testing.expectError(oqs.OqsError.SignFailed, kp.secret_key.sign(message));
+    try std.testing.expectError(oqs.OqsError.KeyExhausted, kp.secret_key.sign(message));
+    try std.testing.expectError(oqs.OqsError.KeyExhausted, kp.secret_key.sign(message));
 }
 
 // The seed comes from build.zig (default 0x5717f022, override with

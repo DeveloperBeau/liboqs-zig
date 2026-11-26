@@ -68,8 +68,10 @@ pub const SigStfl = struct {
     /// algorithm. liboqs decides when a key is used up. As in liboqs, one key
     /// makes `sigsTotal` + 1 signatures, and the last one is made when
     /// `sigsRemaining` is already 0. For XMSS that last signature uses wiped key
-    /// material, so it does not verify. After it, the next `sign` returns
-    /// `SignFailed` and no signature. Any error status from liboqs also returns
+    /// material, so it does not verify. After it, the next `sign` returns no
+    /// signature. For LMS liboqs reports success with no signature there, and
+    /// `sign` returns `KeyExhausted`. For XMSS liboqs reports an error status,
+    /// and `sign` returns `SignFailed`. Any error status from liboqs returns
     /// `SignFailed`, even when liboqs wrote a signature into the buffer.
     pub fn sign(self: SigStfl, message: []const u8, secret_key: *SigStflSecretKey) OqsError![]u8 {
         if (!self.owns(secret_key.*)) return OqsError.InvalidKeySize;
@@ -136,7 +138,7 @@ fn keypairResult(status: c.OQS_STATUS) OqsError!void {
 // is a used-up LMS key, which writes no signature.
 fn signatureLength(status: c.OQS_STATUS, sig_len: usize) OqsError!usize {
     if (status != c.OQS_SUCCESS) return OqsError.SignFailed;
-    if (sig_len == 0) return OqsError.SignFailed;
+    if (sig_len == 0) return OqsError.KeyExhausted;
     return sig_len;
 }
 
@@ -177,11 +179,12 @@ test "keypairResult accepts only OQS_SUCCESS" {
     try std.testing.expectError(OqsError.KeyGenerationFailed, keypairResult(c.OQS_EXTERNAL_LIB_ERROR_OPENSSL));
 }
 
-test "signatureLength: an error is SignFailed even with a length, success with no length is SignFailed, success with a length returns it" {
+test "signatureLength: an error is SignFailed even with a length, success with no length is KeyExhausted, success with a length returns it" {
     try std.testing.expectError(OqsError.SignFailed, signatureLength(c.OQS_ERROR, 2500));
     try std.testing.expectError(OqsError.SignFailed, signatureLength(c.OQS_EXTERNAL_LIB_ERROR_OPENSSL, 1296));
     try std.testing.expectError(OqsError.SignFailed, signatureLength(c.OQS_ERROR, 0));
-    try std.testing.expectError(OqsError.SignFailed, signatureLength(c.OQS_SUCCESS, 0));
+    try std.testing.expectError(OqsError.SignFailed, signatureLength(c.OQS_EXTERNAL_LIB_ERROR_OPENSSL, 0));
+    try std.testing.expectError(OqsError.KeyExhausted, signatureLength(c.OQS_SUCCESS, 0));
     try std.testing.expectEqual(@as(usize, 1296), try signatureLength(c.OQS_SUCCESS, 1296));
     try std.testing.expectEqual(@as(usize, 2500), try signatureLength(c.OQS_SUCCESS, 2500));
 }
