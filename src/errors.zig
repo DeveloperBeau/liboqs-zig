@@ -25,13 +25,13 @@ pub const OqsError = error{
     OutOfMemory,
     /// The algorithm does not take a context string.
     ///
-    /// Nothing returns it yet. It is declared so the set stays the same when
-    /// context strings are added.
+    /// `signWithContext` returns it for a non-empty context on an algorithm
+    /// without context support, such as Falcon or MAYO.
     ContextNotSupported,
     /// The context string is longer than the algorithm allows.
     ///
-    /// Nothing returns it yet. It is declared so the set stays the same when
-    /// context strings are added.
+    /// `signWithContext` returns it for a context over 255 bytes on ML-DSA
+    /// or SLH-DSA.
     ContextTooLong,
     /// The algorithm has no form of the operation that takes a seed.
     ///
