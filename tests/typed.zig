@@ -11,28 +11,28 @@ const build_options = @import("build_options");
 test "every KEM wrapper names a runtime-enabled algorithm" {
     comptime var count: usize = 0;
     inline for (@typeInfo(oqs.kem).@"struct".decl_names) |d_name| {
-        try std.testing.expect(oqs.isKemEnabled(@field(oqs.kem, d_name).info.name));
+        try std.testing.expect(oqs.Registry.isKemEnabled(@field(oqs.kem, d_name).info.name));
         count += 1;
     }
-    try std.testing.expectEqual(oqs.enabledKemCount(), count);
+    try std.testing.expectEqual(oqs.Registry.enabledKemCount(), count);
 }
 
 test "every SIG wrapper names a runtime-enabled algorithm" {
     comptime var count: usize = 0;
     inline for (@typeInfo(oqs.sig).@"struct".decl_names) |d_name| {
-        try std.testing.expect(oqs.isSigEnabled(@field(oqs.sig, d_name).info.name));
+        try std.testing.expect(oqs.Registry.isSigEnabled(@field(oqs.sig, d_name).info.name));
         count += 1;
     }
-    try std.testing.expectEqual(oqs.enabledSigCount(), count);
+    try std.testing.expectEqual(oqs.Registry.enabledSigCount(), count);
 }
 
 test "every stateful wrapper names a runtime-enabled algorithm and the count is 70" {
     comptime var count: usize = 0;
     inline for (@typeInfo(oqs.sig_stfl).@"struct".decl_names) |d_name| {
-        try std.testing.expect(oqs.isSigStflEnabled(@field(oqs.sig_stfl, d_name).info.name));
+        try std.testing.expect(oqs.Registry.isSigStflEnabled(@field(oqs.sig_stfl, d_name).info.name));
         count += 1;
     }
-    try std.testing.expectEqual(oqs.enabledSigStflCount(), count);
+    try std.testing.expectEqual(oqs.Registry.enabledSigStflCount(), count);
     // 21 XMSS, 16 XMSS^MT and 33 LMS, written out by hand.
     try std.testing.expectEqual(@as(usize, 70), count);
 }

@@ -154,23 +154,23 @@ const Fixture = struct {
 test "all 70 stateful variants report enabled and the count is 70" {
     try std.testing.expectEqual(@as(usize, 70), stfl_names.len);
     for (stfl_names) |name| {
-        if (!oqs.isSigStflEnabled(name)) {
+        if (!oqs.Registry.isSigStflEnabled(name)) {
             std.debug.print("stateful variant not enabled: {s}\n", .{name});
             return error.TestExpectedEqual;
         }
     }
-    try std.testing.expectEqual(@as(usize, 70), oqs.enabledSigStflCount());
+    try std.testing.expectEqual(@as(usize, 70), oqs.Registry.enabledSigStflCount());
 }
 
-test "isSigStflEnabled is false for a stateless and an unknown name" {
-    try std.testing.expect(!oqs.isSigStflEnabled("ML-DSA-65"));
-    try std.testing.expect(!oqs.isSigStflEnabled("XMSS-NOT-A-VARIANT"));
+test "Registry.isSigStflEnabled is false for a stateless and an unknown name" {
+    try std.testing.expect(!oqs.Registry.isSigStflEnabled("ML-DSA-65"));
+    try std.testing.expect(!oqs.Registry.isSigStflEnabled("XMSS-NOT-A-VARIANT"));
 }
 
 test "stateless signature count is unchanged by the stateful families" {
     // 221 signature variants were enabled before the stateful families. They
     // live in a separate liboqs registry and must not appear in it.
-    try std.testing.expectEqual(@as(usize, 221), oqs.enabledSigCount());
+    try std.testing.expectEqual(@as(usize, 221), oqs.Registry.enabledSigCount());
 }
 
 test "each family round trips: keygen, two signatures at different indices, both verify, hand-written lengths" {

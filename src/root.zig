@@ -6,6 +6,17 @@ pub const OqsError = @import("errors.zig").OqsError;
 /// A short plain text that says what an `OqsError` means.
 pub const describeError = @import("errors.zig").describeError;
 
+/// The enabled algorithm names, the enabled checks and counts, and the lookup of what liboqs reports about each algorithm.
+pub const Registry = @import("registry.zig").Registry;
+/// The names of the enabled algorithms of one kind, as `Registry` lists them.
+pub const AlgorithmNames = @import("algorithm_names.zig").AlgorithmNames;
+/// What liboqs reports about one key encapsulation mechanism.
+pub const KemDescription = @import("kem_description.zig").KemDescription;
+/// What liboqs reports about one signature scheme.
+pub const SigDescription = @import("sig_description.zig").SigDescription;
+/// What liboqs reports about one stateful signature scheme.
+pub const SigStflDescription = @import("sig_stfl_description.zig").SigStflDescription;
+
 pub const Kem = @import("kem.zig").Kem;
 pub const Sig = @import("sig.zig").Sig;
 /// Runtime core for the stateful hash-based signatures (XMSS, XMSS^MT and LMS).
@@ -23,62 +34,6 @@ pub const sig = algorithms.sig;
 pub const sig_stfl = algorithms.sig_stfl;
 pub const SharedSecret = @import("keys.zig").SharedSecret;
 
-const c = @import("c.zig").c;
-
-/// True if `name` is a KEM algorithm compiled into this build.
-pub fn isKemEnabled(name: [:0]const u8) bool {
-    init.ensure();
-    return c.OQS_KEM_alg_is_enabled(name.ptr) == 1;
-}
-
-/// True if `name` is a signature algorithm compiled into this build.
-pub fn isSigEnabled(name: [:0]const u8) bool {
-    init.ensure();
-    return c.OQS_SIG_alg_is_enabled(name.ptr) == 1;
-}
-
-/// Number of KEM algorithms compiled into this build.
-pub fn enabledKemCount() usize {
-    init.ensure();
-    var n: usize = 0;
-    var i: usize = 0;
-    const total: usize = @intCast(c.OQS_KEM_alg_count());
-    while (i < total) : (i += 1) {
-        if (c.OQS_KEM_alg_is_enabled(c.OQS_KEM_alg_identifier(i)) == 1) n += 1;
-    }
-    return n;
-}
-
-/// Number of signature algorithms compiled into this build.
-pub fn enabledSigCount() usize {
-    init.ensure();
-    var n: usize = 0;
-    var i: usize = 0;
-    const total: usize = @intCast(c.OQS_SIG_alg_count());
-    while (i < total) : (i += 1) {
-        if (c.OQS_SIG_alg_is_enabled(c.OQS_SIG_alg_identifier(i)) == 1) n += 1;
-    }
-    return n;
-}
-
-/// True if `name` is a stateful signature algorithm compiled into this build.
-pub fn isSigStflEnabled(name: [:0]const u8) bool {
-    init.ensure();
-    return c.OQS_SIG_STFL_alg_is_enabled(name.ptr) == 1;
-}
-
-/// Number of stateful signature algorithms compiled into this build.
-pub fn enabledSigStflCount() usize {
-    init.ensure();
-    var n: usize = 0;
-    var i: usize = 0;
-    const total: usize = @intCast(c.OQS_SIG_STFL_alg_count());
-    while (i < total) : (i += 1) {
-        if (c.OQS_SIG_STFL_alg_is_enabled(c.OQS_SIG_STFL_alg_identifier(i)) == 1) n += 1;
-    }
-    return n;
-}
-
 pub const testing = struct {
     pub const seedKat = @import("rng.zig").seedKat;
 };
@@ -88,6 +43,9 @@ pub const version = "0.16.0";
 test {
     _ = init;
     _ = @import("errors.zig");
+    _ = @import("registry.zig");
+    _ = @import("algorithm_names.zig");
+    _ = @import("architecture_test.zig");
     _ = @import("rng.zig");
     _ = @import("kem.zig");
     _ = @import("sig.zig");
