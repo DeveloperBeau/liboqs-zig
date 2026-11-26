@@ -284,7 +284,7 @@ pub fn build(b: *std.Build) void {
     const run_smoke_tests = b.addRunArtifact(smoke_tests);
     test_step.dependOn(&run_smoke_tests.step);
 
-    // Seed for the stateful fuzz tests, shared by the core and typed runs.
+    // Seed for the fuzz tests, shared by every module that has one.
     const fuzz_seed = b.option(u64, "fuzz-seed", "Seed for the fuzz tests") orelse 0x5717_F022;
 
     // Typed-API tests: registry gate + namespace round-trips + type safety.
@@ -405,6 +405,23 @@ pub fn build(b: *std.Build) void {
     // Reads the frozen snapshot from the repo root.
     run_stfl_parity_tests.setCwd(b.path("."));
     test_step.dependOn(&run_stfl_parity_tests.step);
+
+    // Context string tests for the core and typed signatures. They seed the
+    // KAT RNG to compare with the raw C API, so they get their own binary.
+    const sig_context_mod = b.createModule(.{
+        .root_source_file = b.path("tests/sig_context.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    sig_context_mod.addImport("oqs", oqs_mod);
+    sig_context_mod.addImport("c_api", c_api_mod);
+    const sig_context_options = b.addOptions();
+    sig_context_options.addOption(u64, "fuzz_seed", fuzz_seed);
+    sig_context_mod.addOptions("build_options", sig_context_options);
+    const sig_context_tests = b.addTest(.{ .root_module = sig_context_mod });
+    const run_sig_context_tests = b.addRunArtifact(sig_context_tests);
+    run_sig_context_tests.setName(b.fmt("run sig_context tests (fuzz seed 0x{x})", .{fuzz_seed}));
+    test_step.dependOn(&run_sig_context_tests.step);
 
     // ------------------------------------------------------------------
     // C reference harness: cref
