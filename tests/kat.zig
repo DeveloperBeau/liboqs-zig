@@ -631,6 +631,166 @@ test "entries that the build does not enable are counted, and only when the run 
     try std.testing.expectEqual(@as(usize, 0), filtered.summary.kem_entries_not_enabled);
 }
 
+// --- Run list and the expected set of an unfiltered run ----------------------
+
+const KatNames = harness.KatNames;
+
+fn sameSet(want: []const []const u8, got: []const []const u8) !void {
+    try std.testing.expectEqual(want.len, got.len);
+    for (want) |name| {
+        var found = false;
+        for (got) |candidate| found = found or std.mem.eql(u8, candidate, name);
+        if (!found) {
+            std.debug.print("missing from the run list: {s}\n", .{name});
+            return error.TestExpectedEqual;
+        }
+    }
+}
+
+// The run list of the program, cut down to the names that have an entry, as the run does.
+fn runListWithEntry(names: oqs.AlgorithmNames, digests: *const KatDigests, filter: ?[]const u8) ![]const []const u8 {
+    const all = try KatNames.enabledNames(a, names, filter);
+    defer a.free(all);
+    var kept: std.ArrayList([]const u8) = .empty;
+    errdefer kept.deinit(a);
+    for (all) |name| {
+        if (digests.find(name) != null) try kept.append(a, name);
+    }
+    return kept.toOwnedSlice(a);
+}
+
+test "the unfiltered run list holds exactly the 41 expected KEMs and 65 expected signatures, with ML-KEM-512, ML-DSA-44 and SNOVA_25_8_3" {
+    var kem = try KatDigests.parse(a, harness.kem_kats_json);
+    defer kem.deinit();
+    var sig = try KatDigests.parse(a, harness.sig_kats_json);
+    defer sig.deinit();
+
+    const kems = try runListWithEntry(oqs.Registry.kemNames(), &kem, null);
+    defer a.free(kems);
+    const sigs = try runListWithEntry(oqs.Registry.sigNames(), &sig, null);
+    defer a.free(sigs);
+    try std.testing.expectEqual(@as(usize, 41), KatNames.Expected.kems.len);
+    try std.testing.expectEqual(@as(usize, 65), KatNames.Expected.sigs.len);
+    try sameSet(&KatNames.Expected.kems, kems);
+    try sameSet(&KatNames.Expected.sigs, sigs);
+
+    var has_ml_kem_512 = false;
+    for (kems) |name| has_ml_kem_512 = has_ml_kem_512 or std.mem.eql(u8, name, "ML-KEM-512");
+    try std.testing.expect(has_ml_kem_512);
+    var has_snova = false;
+    for (sigs) |name| has_snova = has_snova or std.mem.eql(u8, name, "SNOVA_25_8_3");
+    try std.testing.expect(has_snova);
+}
+
+test "the expected set holds the same names as the upstream files" {
+    var kem = try KatDigests.parse(a, harness.kem_kats_json);
+    defer kem.deinit();
+    var sig = try KatDigests.parse(a, harness.sig_kats_json);
+    defer sig.deinit();
+    for (KatNames.Expected.kems) |name| try std.testing.expect(kem.find(name) != null);
+    for (KatNames.Expected.sigs) |name| try std.testing.expect(sig.find(name) != null);
+}
+
+test "a filter keeps only the named enabled algorithms, in liboqs order" {
+    const list = try KatNames.enabledNames(a, oqs.Registry.kemNames(), "HQC-1,ML-KEM-512,not-a-kem");
+    defer a.free(list);
+    try std.testing.expectEqual(@as(usize, 2), list.len);
+    try std.testing.expect(KatNames.selected("ML-KEM-512", "HQC-1,ML-KEM-512"));
+    try std.testing.expect(!KatNames.selected("ML-KEM-768", "HQC-1,ML-KEM-512"));
+    try std.testing.expect(KatNames.selected("anything", null));
+}
+
+const expected_kems = [_][]const u8{ "K-1", "K-2" };
+const expected_sigs = [_][]const u8{"S-1"};
+const full_lines = "kem K-1 digest " ++ digest_b ++ "\n" ++
+    "kem K-2 digest " ++ digest_a ++ "\n" ++
+    "sig S-1 digest " ++ digest_b ++ "\n";
+
+fn pinnedReport(lines: []const u8, kems: []const []const u8, sigs: []const []const u8, filtered: bool) !ReportRun {
+    var kem = try KatDigests.parse(a, sample_kem_json);
+    defer kem.deinit();
+    var sig = try KatDigests.parse(a, sample_sig_json);
+    defer sig.deinit();
+    var aw: std.Io.Writer.Allocating = .init(a);
+    errdefer aw.deinit();
+    const summary = try KatReport.summarize(a, &aw.writer, .{
+        .kem_names = kems,
+        .sig_names = sigs,
+        .kem_digests = &kem,
+        .sig_digests = &sig,
+        .mode = .single,
+        .lines = lines,
+        .filtered = filtered,
+        .version = "9.9.9",
+        .expected_kems = &expected_kems,
+        .expected_sigs = &expected_sigs,
+    });
+    return .{ .summary = summary, .text = try aw.toOwnedSlice() };
+}
+
+test "an unfiltered run that checks the whole expected set says KAT OK" {
+    const run = try pinnedReport(full_lines, &.{ "K-1", "K-2" }, &.{"S-1"}, false);
+    defer run.deinit();
+    try std.testing.expectEqual(@as(usize, 0), run.summary.problems);
+    try std.testing.expect(std.mem.endsWith(u8, run.text, "KAT OK: 2 KEMs and 1 signatures match liboqs 9.9.9 kats.json (single)\n"));
+}
+
+test "N11: a name dropped from both the enabled names and the result lines still fails when the expected set needs it" {
+    // K-2 stands for ML-KEM-512. The run list, the lines and the summary names all lack it.
+    const lines = "kem K-1 digest " ++ digest_b ++ "\n" ++
+        "sig S-1 digest " ++ digest_b ++ "\n";
+    const run = try pinnedReport(lines, &.{"K-1"}, &.{"S-1"}, false);
+    defer run.deinit();
+    try std.testing.expectEqual(@as(usize, 1), run.summary.problems);
+    try std.testing.expect(std.mem.indexOf(u8, run.text, "MISSING kem K-2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, run.text, "expected 2, checked 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, run.text, "KAT OK") == null);
+    try std.testing.expect(std.mem.indexOf(u8, run.text, "KAT FAILED: 1 problems\n") != null);
+}
+
+test "swapping one checked name for another fails even though the count is the same" {
+    // The run covers K-1 and S-1 and a stand-in for a name that is not expected.
+    var kem = try KatDigests.parse(a, "{\"K-1\":{\"all\":\"" ++ digest_a ++ "\",\"single\":\"" ++ digest_b ++ "\"}," ++
+        "\"K-3\":{\"all\":\"" ++ digest_b ++ "\",\"single\":\"" ++ digest_a ++ "\"}}");
+    defer kem.deinit();
+    var sig = try KatDigests.parse(a, sample_sig_json);
+    defer sig.deinit();
+    var aw: std.Io.Writer.Allocating = .init(a);
+    defer aw.deinit();
+    const summary = try KatReport.summarize(a, &aw.writer, .{
+        .kem_names = &.{ "K-1", "K-3" },
+        .sig_names = &.{"S-1"},
+        .kem_digests = &kem,
+        .sig_digests = &sig,
+        .mode = .single,
+        .lines = "kem K-1 digest " ++ digest_b ++ "\nkem K-3 digest " ++ digest_a ++ "\nsig S-1 digest " ++ digest_b ++ "\n",
+        .filtered = false,
+        .version = "9.9.9",
+        .expected_kems = &expected_kems,
+        .expected_sigs = &expected_sigs,
+    });
+    try std.testing.expectEqual(@as(usize, 2), summary.problems);
+    try std.testing.expectEqual(@as(usize, 2), summary.kems_checked);
+    try std.testing.expect(std.mem.indexOf(u8, aw.written(), "MISSING kem K-2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, aw.written(), "EXTRA kem K-3") != null);
+}
+
+test "a filtered run is not held to the expected set" {
+    const lines = "kem K-1 digest " ++ digest_b ++ "\n";
+    const run = try pinnedReport(lines, &.{"K-1"}, &.{}, true);
+    defer run.deinit();
+    try std.testing.expectEqual(@as(usize, 0), run.summary.problems);
+    try std.testing.expect(std.mem.indexOf(u8, run.text, "KAT OK: 1 KEMs and 0 signatures") != null);
+}
+
+test "an expected signature that is missing fails the same way" {
+    const lines = "kem K-1 digest " ++ digest_b ++ "\nkem K-2 digest " ++ digest_a ++ "\n";
+    const run = try pinnedReport(lines, &.{ "K-1", "K-2" }, &.{}, false);
+    defer run.deinit();
+    try std.testing.expectEqual(@as(usize, 1), run.summary.problems);
+    try std.testing.expect(std.mem.indexOf(u8, run.text, "MISSING sig S-1") != null);
+}
+
 test "result lines print as kind, name and digest, or kind, name and noentry" {
     var buf: [256]u8 = undefined;
     var w = std.Io.Writer.fixed(&buf);

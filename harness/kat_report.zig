@@ -7,7 +7,7 @@
 const std = @import("std");
 const KatDigests = @import("kat_digests.zig").KatDigests;
 
-/// The result lines and their check.
+/// The result lines and their check. A run that is not filtered can also be held to a fixed expected set.
 pub const KatReport = struct {
     /// Which kind of algorithm a line is about.
     pub const Kind = enum { kem, sig };
@@ -39,6 +39,10 @@ pub const KatReport = struct {
         filtered: bool,
         /// The liboqs version, for the last line.
         version: []const u8,
+        /// The KEM names a run that is not filtered must have checked, or null for no such rule.
+        expected_kems: ?[]const []const u8 = null,
+        /// The signature names a run that is not filtered must have checked, or null for no such rule.
+        expected_sigs: ?[]const []const u8 = null,
     };
 
     /// Writes the line of an algorithm whose digest was computed.
@@ -61,6 +65,8 @@ pub const KatReport = struct {
         var summary = Summary{};
         var seen: std.ArrayList(Seen) = .empty;
         defer seen.deinit(allocator);
+        var checked: [2]std.ArrayList([]const u8) = .{ .empty, .empty };
+        defer for (&checked) |*list| list.deinit(allocator);
         var without_entry: [2]std.ArrayList([]const u8) = .{ .empty, .empty };
         defer for (&without_entry) |*list| list.deinit(allocator);
 
@@ -115,6 +121,7 @@ pub const KatReport = struct {
                 try problem(w, &summary, "MISMATCH {s} {s} ({s})\n        expected {s}\n        actual   {s}", .{ kind_text, name, @tagName(input.mode), &expected, actual_hex });
                 continue;
             }
+            try checked[@backingInt(kind)].append(allocator, name);
             if (kind == .kem) summary.kems_checked += 1 else summary.sigs_checked += 1;
         }
 
@@ -125,6 +132,8 @@ pub const KatReport = struct {
             if (!wasSeen(seen.items, .sig, name)) try problem(w, &summary, "NOT REPORTED sig {s}: an enabled algorithm was skipped", .{name});
         }
         if (!input.filtered) {
+            if (input.expected_kems) |expected| try checkExpected(w, &summary, "kem", expected, checked[0].items);
+            if (input.expected_sigs) |expected| try checkExpected(w, &summary, "sig", expected, checked[1].items);
             summary.kem_entries_not_enabled = entriesNotIn(input.kem_digests, input.kem_names);
             summary.sig_entries_not_enabled = entriesNotIn(input.sig_digests, input.sig_names);
         }
@@ -146,6 +155,16 @@ pub const KatReport = struct {
             try w.print("KAT OK: {d} KEMs and {d} signatures match liboqs {s} kats.json ({s})\n", .{ summary.kems_checked, summary.sigs_checked, input.version, @tagName(input.mode) });
         }
         return summary;
+    }
+
+    // Each name of `expected` that was not checked, and each checked name that is not expected, is a problem.
+    fn checkExpected(w: *std.Io.Writer, summary: *Summary, kind_text: []const u8, expected: []const []const u8, checked: []const []const u8) !void {
+        for (expected) |name| {
+            if (!contains(checked, name)) try problem(w, summary, "MISSING {s} {s}: an unfiltered run must check it (expected {d}, checked {d})", .{ kind_text, name, expected.len, checked.len });
+        }
+        for (checked) |name| {
+            if (!contains(expected, name)) try problem(w, summary, "EXTRA {s} {s}: checked, but not in the expected set (expected {d}, checked {d})", .{ kind_text, name, expected.len, checked.len });
+        }
     }
 
     fn problem(w: *std.Io.Writer, summary: *Summary, comptime format: []const u8, args: anytype) !void {

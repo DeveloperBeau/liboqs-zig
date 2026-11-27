@@ -8,6 +8,7 @@
 //!
 //! `OQS_KAT_ALL=1` compares the `all` digests (100 counts) instead of `single`.
 //! `OQS_KAT_FILTER=a,b` covers only the named algorithms.
+//! A run without a filter must check exactly the algorithms of `KatNames.Expected`.
 const std = @import("std");
 const oqs = @import("oqs");
 const harness = @import("kat_harness");
@@ -29,25 +30,6 @@ fn mode() harness.KatDigests.Mode {
     return harness.KatDigests.Mode.fromFlag(envText("OQS_KAT_ALL"));
 }
 
-fn selected(name: []const u8, filter: ?[]const u8) bool {
-    const list = filter orelse return true;
-    var it = std.mem.splitScalar(u8, list, ',');
-    while (it.next()) |item| {
-        if (std.mem.eql(u8, item, name)) return true;
-    }
-    return false;
-}
-
-// The enabled names, in liboqs order, that the filter selects.
-fn enabledNames(a: std.mem.Allocator, names: oqs.AlgorithmNames, filter: ?[]const u8) ![]const [:0]const u8 {
-    var it = names;
-    var list: std.ArrayList([:0]const u8) = .empty;
-    while (it.next()) |name| {
-        if (selected(name, filter)) try list.append(a, name);
-    }
-    return list.items;
-}
-
 fn run(a: std.mem.Allocator, out: *std.Io.Writer) !void {
     const filter = envText("OQS_KAT_FILTER");
     const the_mode = mode();
@@ -59,8 +41,8 @@ fn run(a: std.mem.Allocator, out: *std.Io.Writer) !void {
     var sig_digests = try harness.KatDigests.parse(a, harness.sig_kats_json);
     defer sig_digests.deinit();
 
-    const kems = try enabledNames(a, oqs.Registry.kemNames(), filter);
-    const sigs = try enabledNames(a, oqs.Registry.sigNames(), filter);
+    const kems = try harness.KatNames.enabledNames(a, oqs.Registry.kemNames(), filter);
+    const sigs = try harness.KatNames.enabledNames(a, oqs.Registry.sigNames(), filter);
 
     var index: usize = 0;
     for (kems) |name| {
@@ -95,8 +77,8 @@ fn summarize(a: std.mem.Allocator, io: std.Io, path: []const u8, out: *std.Io.Wr
     var sig_digests = try harness.KatDigests.parse(a, harness.sig_kats_json);
     defer sig_digests.deinit();
 
-    const kems = try enabledNames(a, oqs.Registry.kemNames(), filter);
-    const sigs = try enabledNames(a, oqs.Registry.sigNames(), filter);
+    const kems = try harness.KatNames.enabledNames(a, oqs.Registry.kemNames(), filter);
+    const sigs = try harness.KatNames.enabledNames(a, oqs.Registry.sigNames(), filter);
     const kem_names = try a.alloc([]const u8, kems.len);
     for (kems, kem_names) |name, *slot| slot.* = name;
     const sig_names = try a.alloc([]const u8, sigs.len);
@@ -111,6 +93,9 @@ fn summarize(a: std.mem.Allocator, io: std.Io, path: []const u8, out: *std.Io.Wr
         .lines = lines,
         .filtered = filter != null,
         .version = oqs.version,
+        // An unfiltered run must check exactly the upstream set, not just the names it was asked for.
+        .expected_kems = &harness.KatNames.Expected.kems,
+        .expected_sigs = &harness.KatNames.Expected.sigs,
     });
     return summary.problems == 0;
 }

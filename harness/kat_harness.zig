@@ -21,3 +21,5 @@ pub const KatDigests = @import("kat_digests.zig").KatDigests;
 pub const KatRunner = @import("kat_runner.zig").KatRunner;
 /// The result lines of a run and the check that reads them back.
 pub const KatReport = @import("kat_report.zig").KatReport;
+/// The run list of a known-answer run and the set an unfiltered run must check.
+pub const KatNames = @import("kat_names.zig").KatNames;
