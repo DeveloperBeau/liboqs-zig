@@ -26,8 +26,8 @@ bash tools/run-shards.sh behaviour >"$tmp/out.txt"
 
 kems=$(grep -c '^KEM ' "$tmp/out.txt" || true)
 sigs=$(grep -c '^SIG ' "$tmp/out.txt" || true)
-ukems=$(grep '^KEM ' "$tmp/out.txt" | sort -u | wc -l)
-usigs=$(grep '^SIG ' "$tmp/out.txt" | sort -u | wc -l)
+ukems=$({ grep '^KEM ' "$tmp/out.txt" || true; } | sort -u | wc -l)
+usigs=$({ grep '^SIG ' "$tmp/out.txt" || true; } | sort -u | wc -l)
 reg=$(grep '^REGISTRY ' "$tmp/out.txt" | sort -u)
 nreg=$(printf '%s\n' "$reg" | wc -l)
 if [ "$nreg" -ne 1 ]; then
