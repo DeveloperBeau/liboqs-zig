@@ -28,8 +28,15 @@ kems=$(grep -c '^KEM ' "$tmp/out.txt" || true)
 sigs=$(grep -c '^SIG ' "$tmp/out.txt" || true)
 ukems=$({ grep '^KEM ' "$tmp/out.txt" || true; } | sort -u | wc -l)
 usigs=$({ grep '^SIG ' "$tmp/out.txt" || true; } | sort -u | wc -l)
+# BSD wc pads its count with spaces; arithmetic expansion trims it so the
+# printed line is the same on macOS and Linux.
+kems=$((kems))
+sigs=$((sigs))
+ukems=$((ukems))
+usigs=$((usigs))
 reg=$(grep '^REGISTRY ' "$tmp/out.txt" | sort -u)
 nreg=$(printf '%s\n' "$reg" | wc -l)
+nreg=$((nreg))
 if [ "$nreg" -ne 1 ]; then
     echo "BEHAVIOUR FAILED: shards disagree on the registry counts: $reg"
     exit 1
