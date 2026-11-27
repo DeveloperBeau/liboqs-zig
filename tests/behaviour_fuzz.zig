@@ -13,6 +13,7 @@ const oqs = @import("oqs");
 const checks = @import("behaviour_checks");
 const build_options = @import("build_options");
 const sample = @import("behaviour_sample.zig");
+const stubs = @import("behaviour_stubs.zig");
 
 const a = std.testing.allocator;
 
@@ -140,4 +141,42 @@ test "fuzz: typed key pairs agree, and typed mutants never verify or give the se
             try std.testing.expect(!try skp.public_key.isValidSignature(message, s2.bytes));
         }
     }
+}
+
+// --- The fuzzers can fail ------------------------------------------------------------
+
+// A fuzzer that never fails proves nothing. Each of these hands it one object
+// that misbehaves in one way, and expects BehaviourCheckFailed from fuzzKem or
+// fuzzSig. One round is enough, because the first round must already fail.
+
+test "fuzzKem fails for a KEM that gives the real secret for a changed or random ciphertext, or for another secret key" {
+    var prng = start(0x44);
+    for ([_]stubs.KemMode{ .leak_all, .leak_near, .leak_far, .leak_other_key }) |mode| {
+        var kem = try stubs.kem(a, mode);
+        defer kem.deinit();
+        try std.testing.expectError(error.BehaviourCheckFailed, checks.fuzzKemWith("ML-KEM-512", kem, prng.random(), 1));
+    }
+}
+
+test "fuzzKem fails for a KEM that returns an error for a changed ciphertext" {
+    var prng = start(0x55);
+    var kem = try stubs.kem(a, .reject_rest);
+    defer kem.deinit();
+    try std.testing.expectError(error.BehaviourCheckFailed, checks.fuzzKemWith("ML-KEM-512", kem, prng.random(), 1));
+}
+
+test "fuzzSig fails for a scheme that accepts a changed message" {
+    var prng = start(0x66);
+    for ([_]stubs.SigMode{ .accept_all, .same_length_message }) |mode| {
+        var sig = try stubs.sig(a, mode);
+        defer sig.deinit();
+        try std.testing.expectError(error.BehaviourCheckFailed, checks.fuzzSigWith("ML-DSA-44", sig, prng.random(), 1));
+    }
+}
+
+test "fuzzSig fails for a scheme that rejects a valid signature" {
+    var prng = start(0x77);
+    var sig = try stubs.sig(a, .reject_all);
+    defer sig.deinit();
+    try std.testing.expectError(error.BehaviourCheckFailed, checks.fuzzSigWith("ML-DSA-44", sig, prng.random(), 1));
 }

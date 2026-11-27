@@ -9,6 +9,7 @@ const oqs = @import("oqs");
 const checks = @import("behaviour_checks");
 const c = @import("c_api");
 const sample = @import("behaviour_sample.zig");
+const stubs = @import("behaviour_stubs.zig");
 
 const a = std.testing.allocator;
 
@@ -344,4 +345,97 @@ test "core Sig turns a liboqs error status into KeyGenerationFailed and SignFail
     try std.testing.expectError(oqs.OqsError.KeyGenerationFailed, sig.keypair());
     try std.testing.expectError(oqs.OqsError.SignFailed, sig.sign("m", &sk));
     try std.testing.expect(!try sig.verify("m", "s", &pk));
+}
+
+// --- The checks can fail -------------------------------------------------------------
+
+// A check that never fails proves nothing, so these hand the checks a KEM or a
+// signature scheme that misbehaves in one way each, and expect the check itself
+// to return BehaviourCheckFailed. Each failure prints the line it came from.
+
+test "checkKem fails for a KEM that gives the real secret for a changed ciphertext, at any distance or only a near or a far one" {
+    var prng: std.Random.DefaultPrng = undefined;
+    for ([_]stubs.KemMode{ .leak_all, .leak_near, .leak_far }) |mode| {
+        var kem = try stubs.kem(a, mode);
+        defer kem.deinit();
+        try std.testing.expectError(error.BehaviourCheckFailed, checks.checkKemWith("ML-KEM-512", kem, seededRandom(&prng, 1)));
+    }
+}
+
+test "checkKem fails for a KEM that returns an error for a changed ciphertext" {
+    var prng: std.Random.DefaultPrng = undefined;
+    var kem = try stubs.kem(a, .reject_rest);
+    defer kem.deinit();
+    try std.testing.expectError(error.BehaviourCheckFailed, checks.checkKemWith("ML-KEM-512", kem, seededRandom(&prng, 2)));
+}
+
+test "checkKem fails for a made-up KEM family" {
+    var prng: std.Random.DefaultPrng = undefined;
+    var kem = try stubs.kem(a, .leak_near);
+    defer kem.deinit();
+    try std.testing.expectError(error.BehaviourCheckFailed, checks.checkKemWith("Made-Up-KEM", kem, seededRandom(&prng, 3)));
+}
+
+test "checkSig fails for a scheme that accepts a changed message" {
+    var prng: std.Random.DefaultPrng = undefined;
+    for ([_]stubs.SigMode{ .accept_all, .same_length_message }) |mode| {
+        var sig = try stubs.sig(a, mode);
+        defer sig.deinit();
+        try std.testing.expectError(error.BehaviourCheckFailed, checks.checkSigWith("ML-DSA-44", sig, seededRandom(&prng, 4)));
+    }
+}
+
+test "checkSig fails for a scheme that rejects a valid signature" {
+    var prng: std.Random.DefaultPrng = undefined;
+    for ([_]stubs.SigMode{ .reject_all, .only_empty }) |mode| {
+        var sig = try stubs.sig(a, mode);
+        defer sig.deinit();
+        try std.testing.expectError(error.BehaviourCheckFailed, checks.checkSigWith("ML-DSA-44", sig, seededRandom(&prng, 5)));
+    }
+}
+
+test "checkSig fails for a made-up signature family" {
+    var prng: std.Random.DefaultPrng = undefined;
+    var sig = try stubs.sig(a, .reject_all);
+    defer sig.deinit();
+    try std.testing.expectError(error.BehaviourCheckFailed, checks.checkSigWith("Made-Up-Sig", sig, seededRandom(&prng, 6)));
+}
+
+// --- The Classic McEliece 6960119 padding rule ---------------------------------------
+
+test "decapsErrorsFor: only a nonzero padding bit of Classic-McEliece-6960119 and 6960119f gives an error" {
+    // The syndrome of 6960119 has 1547 bits, so the ciphertext is 194 bytes and
+    // the top 5 bits of the last byte are padding. Bits 0 to 2 of it are data.
+    var ct: [194]u8 = @splat(0xFF);
+    for ([_][]const u8{ "Classic-McEliece-6960119", "Classic-McEliece-6960119f" }) |name| {
+        for ([_]u8{ 0x08, 0x10, 0x20, 0x40, 0x80, 0xF8, 0xFF }) |last| {
+            ct[ct.len - 1] = last;
+            try std.testing.expect(checks.decapsErrorsFor(name, &ct));
+        }
+        for ([_]u8{ 0x00, 0x01, 0x02, 0x04, 0x07 }) |last| {
+            ct[ct.len - 1] = last;
+            try std.testing.expect(!checks.decapsErrorsFor(name, &ct));
+        }
+    }
+    // Only the last byte has padding. A set bit anywhere else is data.
+    var data_only: [194]u8 = @splat(0xFF);
+    data_only[data_only.len - 1] = 0x07;
+    try std.testing.expect(!checks.decapsErrorsFor("Classic-McEliece-6960119", &data_only));
+}
+
+test "decapsErrorsFor: every other KEM gives no error for any last byte, 348864 and the other McEliece sets included" {
+    var ct: [194]u8 = @splat(0xFF);
+    const names = [_][]const u8{
+        "Classic-McEliece-348864",   "Classic-McEliece-348864f",
+        "Classic-McEliece-460896",   "Classic-McEliece-6688128",
+        "Classic-McEliece-8192128f", "ML-KEM-512",
+        "Kyber512",                  "FrodoKEM-640-AES",
+        "HQC-128",
+    };
+    for (names) |name| {
+        for ([_]u8{ 0x00, 0x08, 0xF8, 0xFF }) |last| {
+            ct[ct.len - 1] = last;
+            try std.testing.expect(!checks.decapsErrorsFor(name, &ct));
+        }
+    }
 }

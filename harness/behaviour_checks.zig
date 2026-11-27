@@ -120,9 +120,8 @@ const KemPair = struct {
     public_key: []u8,
     secret_key: []u8,
 
-    fn init(allocator: std.mem.Allocator, name: [:0]const u8) !KemPair {
-        var kem = try oqs.Kem.init(allocator, name);
-        errdefer kem.deinit();
+    /// Makes a key pair with `kem`. The pair does not own `kem`.
+    fn init(kem: oqs.Kem) !KemPair {
         const kp = try kem.keypair();
         return .{ .kem = kem, .public_key = kp.public_key, .secret_key = kp.secret_key };
     }
@@ -131,7 +130,6 @@ const KemPair = struct {
         const allocator = self.kem.allocator;
         allocator.free(self.public_key);
         wipeFree(allocator, self.secret_key);
-        self.kem.deinit();
     }
 };
 
@@ -149,11 +147,20 @@ fn sameBytes(a: []const u8, b: []const u8) bool {
 /// 3. A random ciphertext of the right length gives the same as in 2.
 /// 4. A ciphertext, public key or secret key of the wrong length gives InvalidKeySize.
 pub fn checkKem(allocator: std.mem.Allocator, name: [:0]const u8, random: std.Random) !void {
+    var kem = try oqs.Kem.init(allocator, name);
+    defer kem.deinit();
+    try checkKemWith(name, kem, random);
+}
+
+/// The same checks on a `kem` the caller made, so a test can pass an object
+/// whose function pointers misbehave and see that a check fails. `name` picks
+/// the family rules. The caller keeps `kem` and frees it.
+pub fn checkKemWith(name: []const u8, kem: oqs.Kem, random: std.Random) !void {
+    const allocator = kem.allocator;
     try require(name, "no rejection rule is written for this KEM family", rejectionOf(name) != null);
 
-    var pair = try KemPair.init(allocator, name);
+    var pair = try KemPair.init(kem);
     defer pair.deinit();
-    const kem = pair.kem;
     try require(name, "key and ciphertext lengths are zero", kem.lengthPublicKey() > 0 and kem.lengthSecretKey() > 0 and kem.lengthCiphertext() > 0);
     try require(name, "the shared secret is not 16, 24 or 32 bytes", kem.lengthSharedSecret() == 16 or kem.lengthSharedSecret() == 24 or kem.lengthSharedSecret() == 32);
 
@@ -199,7 +206,7 @@ pub fn checkKem(allocator: std.mem.Allocator, name: [:0]const u8, random: std.Ra
 /// padding, and crypto_kem_dec returns -1 when any of them is set
 /// (check_c_padding). The other eight sets have a whole number of syndrome
 /// bytes, and every other family has no such check.
-fn decapsErrorsFor(name: []const u8, ciphertext: []const u8) bool {
+pub fn decapsErrorsFor(name: []const u8, ciphertext: []const u8) bool {
     const has_padding_check = std.mem.eql(u8, name, "Classic-McEliece-6960119") or std.mem.eql(u8, name, "Classic-McEliece-6960119f");
     return has_padding_check and (ciphertext[ciphertext.len - 1] >> 3) != 0;
 }
@@ -264,9 +271,8 @@ const SigPair = struct {
     public_key: []u8,
     secret_key: []u8,
 
-    fn init(allocator: std.mem.Allocator, name: [:0]const u8) !SigPair {
-        var sig = try oqs.Sig.init(allocator, name);
-        errdefer sig.deinit();
+    /// Makes a key pair with `sig`. The pair does not own `sig`.
+    fn init(sig: oqs.Sig) !SigPair {
         const kp = try sig.keypair();
         return .{ .sig = sig, .public_key = kp.public_key, .secret_key = kp.secret_key };
     }
@@ -275,7 +281,6 @@ const SigPair = struct {
         const allocator = self.sig.allocator;
         allocator.free(self.public_key);
         wipeFree(allocator, self.secret_key);
-        self.sig.deinit();
     }
 };
 
@@ -294,14 +299,21 @@ const SigPair = struct {
 ///    length, the produced length, 1, half the maximum, 0 and one over the
 ///    maximum, never verify.
 pub fn checkSig(allocator: std.mem.Allocator, name: [:0]const u8, random: std.Random) !void {
+    var sig = try oqs.Sig.init(allocator, name);
+    defer sig.deinit();
+    try checkSigWith(name, sig, random);
+}
+
+/// The same checks on a `sig` the caller made, like `checkKemWith`.
+pub fn checkSigWith(name: []const u8, sig: oqs.Sig, random: std.Random) !void {
+    const allocator = sig.allocator;
     const claim = claimsSufCma(name) orelse {
         try require(name, "no SUF-CMA claim is written for this signature family", false);
         unreachable;
     };
 
-    var pair = try SigPair.init(allocator, name);
+    var pair = try SigPair.init(sig);
     defer pair.deinit();
-    const sig = pair.sig;
     try require(name, "the liboqs object does not claim EUF-CMA", sig.handle.euf_cma);
     try require(name, "the liboqs SUF-CMA claim differs from the hand-written one", sig.handle.suf_cma == claim);
     try require(name, "key lengths are zero", sig.lengthPublicKey() > 0 and sig.lengthSecretKey() > 0 and sig.lengthSignatureMax() > 0);
@@ -349,7 +361,7 @@ pub fn checkSig(allocator: std.mem.Allocator, name: [:0]const u8, random: std.Ra
 
     // Another key pair.
     {
-        var other = try SigPair.init(allocator, name);
+        var other = try SigPair.init(sig);
         defer other.deinit();
         try require(name, "a signature verified under another public key", !try sig.verify(&message, signature, other.public_key));
         try require(name, "two key pairs have the same public key", !sameBytes(pair.public_key, other.public_key));
@@ -426,6 +438,12 @@ fn flipSome(random: std.Random, bytes: []u8) void {
 pub fn fuzzKem(allocator: std.mem.Allocator, name: [:0]const u8, random: std.Random, rounds: usize) !void {
     var kem = try oqs.Kem.init(allocator, name);
     defer kem.deinit();
+    try fuzzKemWith(name, kem, random, rounds);
+}
+
+/// `fuzzKem` on a `kem` the caller made, like `checkKemWith`.
+pub fn fuzzKemWith(name: []const u8, kem: oqs.Kem, random: std.Random, rounds: usize) !void {
+    const allocator = kem.allocator;
     for (0..rounds) |_| {
         seedKat(random);
         const kp = try kem.keypair();
@@ -468,6 +486,12 @@ pub fn fuzzKem(allocator: std.mem.Allocator, name: [:0]const u8, random: std.Ran
 pub fn fuzzSig(allocator: std.mem.Allocator, name: [:0]const u8, random: std.Random, rounds: usize) !void {
     var sig = try oqs.Sig.init(allocator, name);
     defer sig.deinit();
+    try fuzzSigWith(name, sig, random, rounds);
+}
+
+/// `fuzzSig` on a `sig` the caller made, like `checkKemWith`.
+pub fn fuzzSigWith(name: []const u8, sig: oqs.Sig, random: std.Random, rounds: usize) !void {
+    const allocator = sig.allocator;
     const claim = claimsSufCma(name) orelse {
         try require(name, "no SUF-CMA claim is written for this signature family", false);
         unreachable;

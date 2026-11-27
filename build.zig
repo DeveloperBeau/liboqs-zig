@@ -456,6 +456,7 @@ pub fn build(b: *std.Build) void {
     });
     behaviour_fuzz_mod.addImport("oqs", oqs_mod);
     behaviour_fuzz_mod.addImport("behaviour_checks", behaviour_checks_mod);
+    behaviour_fuzz_mod.addImport("c_api", c_api_mod);
     const behaviour_fuzz_options = b.addOptions();
     behaviour_fuzz_options.addOption(u64, "fuzz_seed", fuzz_seed);
     behaviour_fuzz_mod.addOptions("build_options", behaviour_fuzz_options);
@@ -591,6 +592,15 @@ pub fn build(b: *std.Build) void {
     run_behaviour.has_side_effects = true; // always re-run; not cacheable
     const behaviour_step = b.step("behaviour", "Behaviour and fuzz checks over every enabled KEM and signature scheme");
     behaviour_step.dependOn(&run_behaviour.step);
+
+    // A filtered run of the script on four fast algorithms, in `zig build test`:
+    // it must end with BEHAVIOUR FILTERED OK and never with BEHAVIOUR OK. It
+    // needs the installed behaviour executable, which tools/run-shards.sh runs.
+    const run_behaviour_filtered = b.addSystemCommand(&.{ "bash", "tools/behaviour-filtered-test.sh" });
+    run_behaviour_filtered.setName("run filtered behaviour script test");
+    run_behaviour_filtered.step.dependOn(&install_behaviour.step);
+    run_behaviour_filtered.has_side_effects = true;
+    test_step.dependOn(&run_behaviour_filtered.step);
 
     // ------------------------------------------------------------------
     // Parity gate: full-coverage byte-identical diff of cref vs zref.
