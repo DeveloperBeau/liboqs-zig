@@ -35,8 +35,10 @@ pub const OqsError = error{
     ContextTooLong,
     /// The algorithm has no form of the operation that takes a seed.
     ///
-    /// Nothing returns it yet. It is declared so the set stays the same when
-    /// seeded operations are added.
+    /// `Kem.keypairFromSeed` and `Kem.encapsFromSeed`, and the typed
+    /// `generateKeyPairFromSeed` and `encapsulateWithSeed`, return it for every
+    /// mechanism but ML-KEM-512, 768 and 1024. It is returned before liboqs is
+    /// called, and before any length check.
     SeedNotSupported,
     /// A stateful secret key has no signature left.
     ///
