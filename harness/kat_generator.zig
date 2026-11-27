@@ -32,8 +32,11 @@ pub const KatGenerator = struct {
     /// The number of counts of the `all` run of Classic McEliece.
     pub const mceliece_counts: usize = 10;
 
+    /// Which generator this is.
     kind: Kind,
+    /// The NIST DRBG state that `saveState` kept.
     saved_nist: c.OQS_NIST_DRBG_struct = undefined,
+    /// The SHAKE256 state that `saveState` kept.
     saved_hqc: c.OQS_SHA3_shake256_inc_ctx = .{ .ctx = null },
 
     /// The generator `name` uses. Only the three HQC names use SHAKE256.

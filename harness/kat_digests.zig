@@ -13,6 +13,12 @@ pub const KatDigests = struct {
         single,
         /// The program output for every count.
         all,
+
+        /// The mode that the value of `OQS_KAT_ALL` picks: `all` for exactly `1`, else `single`.
+        pub fn fromFlag(flag: ?[]const u8) Mode {
+            const text = flag orelse return .single;
+            return if (std.mem.eql(u8, text, "1")) .all else .single;
+        }
     };
 
     /// The two digests of one algorithm, as 64 lower-case hexadecimal characters each.
@@ -46,7 +52,9 @@ pub const KatDigests = struct {
 
     const Item = struct { name: []u8, entry: Entry };
 
+    /// Owns the names.
     arena: std.heap.ArenaAllocator,
+    /// The entries in file order.
     items: []const Item,
 
     /// Reads `text`. The result owns copies of the names.

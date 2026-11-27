@@ -315,6 +315,14 @@ test "an entry matches only the digest it holds for the chosen mode" {
     try std.testing.expect(!entry.matches(.single, flipped));
 }
 
+test "OQS_KAT_ALL picks the all digests only when it is exactly 1" {
+    try std.testing.expectEqual(KatDigests.Mode.single, KatDigests.Mode.fromFlag(null));
+    try std.testing.expectEqual(KatDigests.Mode.single, KatDigests.Mode.fromFlag(""));
+    try std.testing.expectEqual(KatDigests.Mode.single, KatDigests.Mode.fromFlag("0"));
+    try std.testing.expectEqual(KatDigests.Mode.single, KatDigests.Mode.fromFlag("11"));
+    try std.testing.expectEqual(KatDigests.Mode.all, KatDigests.Mode.fromFlag("1"));
+}
+
 test "the upstream files hold 41 KEM entries and 65 signature entries, as written out by hand" {
     var kem = try KatDigests.parse(a, harness.kem_kats_json);
     defer kem.deinit();

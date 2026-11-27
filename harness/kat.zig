@@ -26,8 +26,7 @@ fn envUsize(name: [*:0]const u8, default: usize) usize {
 }
 
 fn mode() harness.KatDigests.Mode {
-    const text = envText("OQS_KAT_ALL") orelse return .single;
-    return if (std.mem.eql(u8, text, "1")) .all else .single;
+    return harness.KatDigests.Mode.fromFlag(envText("OQS_KAT_ALL"));
 }
 
 fn selected(name: []const u8, filter: ?[]const u8) bool {
@@ -116,6 +115,7 @@ fn summarize(a: std.mem.Allocator, io: std.Io, path: []const u8, out: *std.Io.Wr
     return summary.problems == 0;
 }
 
+/// Runs `kat run` or `kat summarize FILE`.
 pub fn main(init: std.process.Init.Minimal) !void {
     const io = std.Io.Threaded.global_single_threaded.io();
     var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);

@@ -52,7 +52,7 @@ pub const KatReport = struct {
         try w.print("{s} {s} noentry\n", .{ @tagName(kind), name });
     }
 
-    const Seen = struct { kind: Kind, name: []const u8, count: usize };
+    const Seen = struct { kind: Kind, name: []const u8 };
 
     /// Checks `input.lines` against the digest files and the enabled names, and prints the result to `w`.
     ///
@@ -83,12 +83,11 @@ pub const KatReport = struct {
                 try problem(w, &summary, "UNEXPECTED {s} {s}: the run was not asked to cover it", .{ kind_text, name });
                 continue;
             }
-            if (findSeen(seen.items, kind, name)) |previous| {
-                previous.count += 1;
+            if (wasSeen(seen.items, kind, name)) {
                 try problem(w, &summary, "DUPLICATE {s} {s}: reported twice", .{ kind_text, name });
                 continue;
             }
-            try seen.append(allocator, .{ .kind = kind, .name = name, .count = 1 });
+            try seen.append(allocator, .{ .kind = kind, .name = name });
 
             const digests = if (kind == .kem) input.kem_digests else input.sig_digests;
             const entry = digests.find(name);
@@ -107,10 +106,7 @@ pub const KatReport = struct {
             };
             const actual_hex = parts.next() orelse "";
             var actual: [32]u8 = undefined;
-            const decoded = std.mem.eql(u8, status, "digest") and
-                actual_hex.len == 64 and
-                if (std.fmt.hexToBytes(&actual, actual_hex)) |_| true else |_| false;
-            if (!decoded) {
+            if (!std.mem.eql(u8, status, "digest") or !decodeDigest(actual_hex, &actual)) {
                 try problem(w, &summary, "malformed line: {s}", .{line});
                 continue;
             }
@@ -123,10 +119,10 @@ pub const KatReport = struct {
         }
 
         for (input.kem_names) |name| {
-            if (findSeen(seen.items, .kem, name) == null) try problem(w, &summary, "NOT REPORTED kem {s}: an enabled algorithm was skipped", .{name});
+            if (!wasSeen(seen.items, .kem, name)) try problem(w, &summary, "NOT REPORTED kem {s}: an enabled algorithm was skipped", .{name});
         }
         for (input.sig_names) |name| {
-            if (findSeen(seen.items, .sig, name) == null) try problem(w, &summary, "NOT REPORTED sig {s}: an enabled algorithm was skipped", .{name});
+            if (!wasSeen(seen.items, .sig, name)) try problem(w, &summary, "NOT REPORTED sig {s}: an enabled algorithm was skipped", .{name});
         }
         if (!input.filtered) {
             summary.kem_entries_not_enabled = entriesNotIn(input.kem_digests, input.kem_names);
@@ -157,6 +153,13 @@ pub const KatReport = struct {
         try w.print("    " ++ format ++ "\n", args);
     }
 
+    // True if `text` is 64 hexadecimal characters, which are then in `out`.
+    fn decodeDigest(text: []const u8, out: *[32]u8) bool {
+        if (text.len != 64) return false;
+        _ = std.fmt.hexToBytes(out, text) catch return false;
+        return true;
+    }
+
     fn contains(names: []const []const u8, name: []const u8) bool {
         for (names) |candidate| {
             if (std.mem.eql(u8, candidate, name)) return true;
@@ -164,11 +167,11 @@ pub const KatReport = struct {
         return false;
     }
 
-    fn findSeen(seen: []Seen, kind: Kind, name: []const u8) ?*Seen {
-        for (seen) |*item| {
-            if (item.kind == kind and std.mem.eql(u8, item.name, name)) return item;
+    fn wasSeen(seen: []const Seen, kind: Kind, name: []const u8) bool {
+        for (seen) |item| {
+            if (item.kind == kind and std.mem.eql(u8, item.name, name)) return true;
         }
-        return null;
+        return false;
     }
 
     fn entriesNotIn(digests: *const KatDigests, names: []const []const u8) usize {
