@@ -152,9 +152,14 @@ The typed secret key has no import or export, because the core cannot save or re
 ```sh
 zig build              # build the static C library and the oqs module
 zig build test         # unit, smoke, typed-API, registry, context string, functional, concurrency, and stateful tests
+zig build behaviour    # every KEM and signature: correctness, rejection of bad input, a short fuzz pass
 zig build parity       # every algorithm: C reference vs Zig wrapper, byte-identical
 zig build snapshot     # wrapper output vs the frozen liboqs reference digests
 ```
+
+`zig build behaviour` runs the behaviour checks and one fuzz round on every enabled KEM and stateless signature scheme, through `oqs.Kem` and `oqs.Sig`. For a KEM it checks that keypair, encaps and decaps agree, that a changed or random ciphertext never gives the encapsulated secret, and that a ciphertext, public key or secret key of the wrong length gives `error.InvalidKeySize`. For a signature scheme it checks that sign and verify agree, that flipped message bits never verify, that flipped signature bits never verify for the schemes that claim SUF-CMA (ML-DSA), that another key never verifies, and that all-zero, all-one and random signatures of many lengths never verify. The harness is sharded like parity and built in the optimize mode you pass, Debug by default. It prints `BEHAVIOUR OK: 41 KEMs and 221 signatures` and fails when the algorithms that ran differ from the registry. A Debug run takes about 19 minutes with 4 shards. `OQS_SHARDS` sets the shard count and `OQS_BEHAVIOUR_SEED` the seed. The step is not part of CI.
+
+`zig build test` runs the same checks on a sample (one algorithm of most families, the quick ones in a Debug build), the stub tests that make liboqs report an error, the typed-API seam tests, and the behaviour fuzz tests. The fuzz tests print their seed first. They check both directions: random messages and random KAT seeds always give valid pairs, and mutated messages, signatures, ciphertexts and keys never verify and never give the real secret.
 
 The stateful fuzz test signs several seeded messages per family, then checks that each valid pair verifies and that mutated or swapped pairs do not. The registry fuzz test looks up every listed name, then mutated names and names of the wrong kind, and checks that only listed names are found. The context string fuzz test signs ML-DSA-44 messages under seeded contexts of 0 to 255 bytes and checks that each verifies under its own context, that flipped, cut or extended contexts and changed messages or signatures do not, and that longer contexts give `error.ContextTooLong`. They all use a fixed seed. `zig build test --summary all` shows it in the names of the test steps, and `-Dfuzz-seed=N` runs them with another seed.
 
