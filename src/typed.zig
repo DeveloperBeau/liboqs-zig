@@ -110,6 +110,25 @@ pub fn Kem(comptime spec: KemInfo) type {
                     .shared_secret = SharedSecret.fromOwned(self.allocator, enc.shared_secret),
                 };
             }
+
+            /// Encapsulate to this key with the randomness that `seed` fixes.
+            /// The same key and seed always give the same ciphertext and shared
+            /// secret. Owned memory is allocated with the key's allocator.
+            ///
+            /// It returns what `oqs.Kem.encapsFromSeed` returns. Only ML-KEM
+            /// takes a seed, of 32 bytes. Any other algorithm returns
+            /// `SeedNotSupported` and a seed of the wrong length returns
+            /// `InvalidKeySize`. The seed is secret, so the caller wipes it.
+            pub fn encapsulateWithSeed(self: PublicKey, seed: []const u8) OqsError!Encapsulation(SharedSecret) {
+                var k = try core_kem.init(self.allocator, spec.name);
+                defer k.deinit();
+                const enc = try k.encapsFromSeed(self.bytes, seed);
+                return .{
+                    .allocator = self.allocator,
+                    .ciphertext = enc.ciphertext,
+                    .shared_secret = SharedSecret.fromOwned(self.allocator, enc.shared_secret),
+                };
+            }
         };
 
         /// Decapsulation (secret) key for this algorithm. Zeroed on `deinit`.
@@ -143,6 +162,23 @@ pub fn Kem(comptime spec: KemInfo) type {
             var k = try core_kem.init(allocator, spec.name);
             defer k.deinit();
             const kp = try k.keypair();
+            return .{
+                .public_key = .{ .allocator = allocator, .bytes = kp.public_key },
+                .secret_key = .{ .allocator = allocator, .bytes = kp.secret_key },
+            };
+        }
+
+        /// Generate the key pair that `seed` fixes. The same seed always gives
+        /// the same key pair.
+        ///
+        /// It returns what `oqs.Kem.keypairFromSeed` returns. Only ML-KEM
+        /// takes a seed, of 64 bytes. Any other algorithm returns
+        /// `SeedNotSupported` and a seed of the wrong length returns
+        /// `InvalidKeySize`. The seed is secret, so the caller wipes it.
+        pub fn generateKeyPairFromSeed(allocator: std.mem.Allocator, seed: []const u8) OqsError!KeyPair {
+            var k = try core_kem.init(allocator, spec.name);
+            defer k.deinit();
+            const kp = try k.keypairFromSeed(seed);
             return .{
                 .public_key = .{ .allocator = allocator, .bytes = kp.public_key },
                 .secret_key = .{ .allocator = allocator, .bytes = kp.secret_key },

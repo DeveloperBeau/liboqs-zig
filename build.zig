@@ -464,6 +464,24 @@ pub fn build(b: *std.Build) void {
     run_behaviour_fuzz_tests.setName(b.fmt("run behaviour fuzz tests (fuzz seed 0x{x})", .{fuzz_seed}));
     test_step.dependOn(&run_behaviour_fuzz_tests.step);
 
+    // Seeded key generation and encapsulation tests for the core and typed
+    // KEMs. They compare with the raw C API under fixed seeds and do not seed
+    // the KAT RNG, but they get their own binary like the context tests.
+    const kem_seed_mod = b.createModule(.{
+        .root_source_file = b.path("tests/kem_seed.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    kem_seed_mod.addImport("oqs", oqs_mod);
+    kem_seed_mod.addImport("c_api", c_api_mod);
+    const kem_seed_options = b.addOptions();
+    kem_seed_options.addOption(u64, "fuzz_seed", fuzz_seed);
+    kem_seed_mod.addOptions("build_options", kem_seed_options);
+    const kem_seed_tests = b.addTest(.{ .root_module = kem_seed_mod });
+    const run_kem_seed_tests = b.addRunArtifact(kem_seed_tests);
+    run_kem_seed_tests.setName(b.fmt("run kem_seed tests (fuzz seed 0x{x})", .{fuzz_seed}));
+    test_step.dependOn(&run_kem_seed_tests.step);
+
     // ------------------------------------------------------------------
     // C reference harness: cref
     // ------------------------------------------------------------------

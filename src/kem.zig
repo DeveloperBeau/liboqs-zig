@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @import("c.zig").c;
 const oqs_init = @import("init.zig");
 const OqsError = @import("errors.zig").OqsError;
+const keys = @import("keys.zig");
 
 pub const Kem = struct {
     allocator: std.mem.Allocator,
@@ -31,6 +32,15 @@ pub const Kem = struct {
         return self.handle.length_shared_secret;
     }
 
+    /// The length in bytes of the seed for `keypairFromSeed`, or 0 when liboqs has no seeded key generation for this mechanism.
+    pub fn lengthKeyPairSeed(self: Kem) usize {
+        return self.handle.length_keypair_seed;
+    }
+    /// The length in bytes of the seed for `encapsFromSeed`, or 0 when liboqs has no seeded encapsulation for this mechanism.
+    pub fn lengthEncapsulationSeed(self: Kem) usize {
+        return self.handle.length_encaps_seed;
+    }
+
     /// Caller owns both returned slices.
     pub fn keypair(self: Kem) OqsError!struct { public_key: []u8, secret_key: []u8 } {
         const pk = try self.allocator.alloc(u8, self.lengthPublicKey());
@@ -38,6 +48,26 @@ pub const Kem = struct {
         const sk = try self.allocator.alloc(u8, self.lengthSecretKey());
         errdefer self.allocator.free(sk);
         if (c.OQS_KEM_keypair(self.handle, pk.ptr, sk.ptr) != c.OQS_SUCCESS)
+            return OqsError.KeyGenerationFailed;
+        return .{ .public_key = pk, .secret_key = sk };
+    }
+
+    /// Generates the key pair that `seed` fixes, through `OQS_KEM_keypair_derand`.
+    /// The same seed always gives the same key pair.
+    ///
+    /// A mechanism whose liboqs seed length is 0 returns `SeedNotSupported`.
+    /// A seed of any other length than `lengthKeyPairSeed` returns
+    /// `InvalidKeySize`. Both are checked before liboqs is called, in that
+    /// order. A seed is secret, so the caller wipes it when done. The wrapper
+    /// keeps no copy. Caller owns both returned slices.
+    pub fn keypairFromSeed(self: Kem, seed: []const u8) OqsError!struct { public_key: []u8, secret_key: []u8 } {
+        if (self.lengthKeyPairSeed() == 0) return OqsError.SeedNotSupported;
+        if (seed.len != self.lengthKeyPairSeed()) return OqsError.InvalidKeySize;
+        const pk = try self.allocator.alloc(u8, self.lengthPublicKey());
+        errdefer self.allocator.free(pk);
+        const sk = try self.allocator.alloc(u8, self.lengthSecretKey());
+        errdefer keys.zeroAndFree(self.allocator, sk);
+        if (c.OQS_KEM_keypair_derand(self.handle, pk.ptr, sk.ptr, seed.ptr) != c.OQS_SUCCESS)
             return OqsError.KeyGenerationFailed;
         return .{ .public_key = pk, .secret_key = sk };
     }
@@ -50,6 +80,29 @@ pub const Kem = struct {
         const ss = try self.allocator.alloc(u8, self.lengthSharedSecret());
         errdefer self.allocator.free(ss);
         if (c.OQS_KEM_encaps(self.handle, ct.ptr, ss.ptr, public_key.ptr) != c.OQS_SUCCESS)
+            return OqsError.EncapsulationFailed;
+        return .{ .ciphertext = ct, .shared_secret = ss };
+    }
+
+    /// Encapsulates to `public_key` with the randomness that `seed` fixes,
+    /// through `OQS_KEM_encaps_derand`. The same key and seed always give the
+    /// same ciphertext and shared secret.
+    ///
+    /// The checks run before liboqs is called, in this order. A mechanism whose
+    /// liboqs seed length is 0 returns `SeedNotSupported`. A seed of any other
+    /// length than `lengthEncapsulationSeed` returns `InvalidKeySize`. Then a
+    /// public key of the wrong length returns `InvalidKeySize`. A seed is
+    /// secret, so the caller wipes it when done. The wrapper keeps no copy.
+    /// Caller owns both returned slices.
+    pub fn encapsFromSeed(self: Kem, public_key: []const u8, seed: []const u8) OqsError!struct { ciphertext: []u8, shared_secret: []u8 } {
+        if (self.lengthEncapsulationSeed() == 0) return OqsError.SeedNotSupported;
+        if (seed.len != self.lengthEncapsulationSeed()) return OqsError.InvalidKeySize;
+        if (public_key.len != self.lengthPublicKey()) return OqsError.InvalidKeySize;
+        const ct = try self.allocator.alloc(u8, self.lengthCiphertext());
+        errdefer self.allocator.free(ct);
+        const ss = try self.allocator.alloc(u8, self.lengthSharedSecret());
+        errdefer keys.zeroAndFree(self.allocator, ss);
+        if (c.OQS_KEM_encaps_derand(self.handle, ct.ptr, ss.ptr, public_key.ptr, seed.ptr) != c.OQS_SUCCESS)
             return OqsError.EncapsulationFailed;
         return .{ .ciphertext = ct, .shared_secret = ss };
     }
