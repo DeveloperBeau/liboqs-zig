@@ -423,6 +423,47 @@ pub fn build(b: *std.Build) void {
     run_sig_context_tests.setName(b.fmt("run sig_context tests (fuzz seed 0x{x})", .{fuzz_seed}));
     test_step.dependOn(&run_sig_context_tests.step);
 
+    // Behaviour tests over a sample of the algorithms, under the system RNG.
+    // The checks are shared with the behaviour harness, so the module is
+    // created before the harness below. `zig build behaviour` runs them all.
+    const behaviour_checks_mod = b.createModule(.{
+        .root_source_file = b.path("harness/behaviour_checks.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    behaviour_checks_mod.addImport("oqs", oqs_mod);
+    const behaviour_tests_mod = b.createModule(.{
+        .root_source_file = b.path("tests/behaviour.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    behaviour_tests_mod.addImport("oqs", oqs_mod);
+    behaviour_tests_mod.addImport("behaviour_checks", behaviour_checks_mod);
+    behaviour_tests_mod.addImport("c_api", c_api_mod);
+    const behaviour_tests = b.addTest(.{ .root_module = behaviour_tests_mod });
+    test_step.dependOn(&b.addRunArtifact(behaviour_tests).step);
+
+    // The unit tests of the check helpers.
+    const behaviour_checks_tests = b.addTest(.{ .root_module = behaviour_checks_mod });
+    test_step.dependOn(&b.addRunArtifact(behaviour_checks_tests).step);
+
+    // Fuzz tests over the same sample. They seed the KAT RNG, so they get their
+    // own binary, and take the fuzz seed from the build like the others.
+    const behaviour_fuzz_mod = b.createModule(.{
+        .root_source_file = b.path("tests/behaviour_fuzz.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    behaviour_fuzz_mod.addImport("oqs", oqs_mod);
+    behaviour_fuzz_mod.addImport("behaviour_checks", behaviour_checks_mod);
+    const behaviour_fuzz_options = b.addOptions();
+    behaviour_fuzz_options.addOption(u64, "fuzz_seed", fuzz_seed);
+    behaviour_fuzz_mod.addOptions("build_options", behaviour_fuzz_options);
+    const behaviour_fuzz_tests = b.addTest(.{ .root_module = behaviour_fuzz_mod });
+    const run_behaviour_fuzz_tests = b.addRunArtifact(behaviour_fuzz_tests);
+    run_behaviour_fuzz_tests.setName(b.fmt("run behaviour fuzz tests (fuzz seed 0x{x})", .{fuzz_seed}));
+    test_step.dependOn(&run_behaviour_fuzz_tests.step);
+
     // ------------------------------------------------------------------
     // C reference harness: cref
     // ------------------------------------------------------------------
@@ -511,6 +552,27 @@ pub fn build(b: *std.Build) void {
     stfl_compare_exe_mod.addImport("stfl_filter", stfl_harness_filter_mod);
     const stfl_compare_exe = b.addExecutable(.{ .name = "stfl_compare", .root_module = stfl_compare_exe_mod });
     b.installArtifact(stfl_compare_exe);
+
+    // ------------------------------------------------------------------
+    // Behaviour harness: correctness, rejection and a short fuzz pass over
+    // every enabled KEM and stateless signature scheme, in the optimize mode
+    // of this build. It uses the system `oqs` module, so -Doptimize applies
+    // to the C library and the wrapper alike. See tools/behaviour.sh.
+    // ------------------------------------------------------------------
+    const behaviour_mod = b.createModule(.{
+        .root_source_file = b.path("harness/behaviour.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    behaviour_mod.addImport("oqs", oqs_mod);
+    behaviour_mod.addImport("behaviour_checks", behaviour_checks_mod);
+    const behaviour_exe = b.addExecutable(.{ .name = "behaviour", .root_module = behaviour_mod });
+    const install_behaviour = b.addInstallArtifact(behaviour_exe, .{});
+    const run_behaviour = b.addSystemCommand(&.{ "bash", "tools/behaviour.sh" });
+    run_behaviour.step.dependOn(&install_behaviour.step);
+    run_behaviour.has_side_effects = true; // always re-run; not cacheable
+    const behaviour_step = b.step("behaviour", "Behaviour and fuzz checks over every enabled KEM and signature scheme");
+    behaviour_step.dependOn(&run_behaviour.step);
 
     // ------------------------------------------------------------------
     // Parity gate: full-coverage byte-identical diff of cref vs zref.
