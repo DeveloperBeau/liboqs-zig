@@ -351,3 +351,32 @@ test "distinct stateful algorithms have distinct key types" {
     try std.testing.expect(LmsW8.Signature != Xmss10.Signature);
     try std.testing.expect(Xmss10.PublicKey != oqs.sig_stfl.XmssSha256H16.PublicKey);
 }
+
+// liboqs checks the header byte of a Falcon secret key before it signs. A key
+// of the right length whose header byte is wrong passes every wrapper check
+// and then makes liboqs return an error status. Two such keys are used: all
+// zeros, and a real key with its header byte changed.
+test "typed Falcon-512 sign and signWithContext return SignFailed for a secret key of the right length that liboqs rejects" {
+    const a = std.testing.allocator;
+    const T = oqs.sig.Falcon512;
+
+    var zero_bytes: [T.secret_key_length]u8 = @splat(0);
+    var zero_key = try T.SecretKey.fromBytes(a, &zero_bytes);
+    defer zero_key.deinit();
+    try std.testing.expectError(error.SignFailed, zero_key.sign("the quick brown fox"));
+    try std.testing.expectError(error.SignFailed, zero_key.signWithContext("the quick brown fox", ""));
+
+    var kp = try T.generateKeyPair(a);
+    defer kp.public_key.deinit();
+    defer kp.secret_key.deinit();
+    var bad_header = try T.SecretKey.fromBytes(a, kp.secret_key.bytes);
+    defer bad_header.deinit();
+    bad_header.bytes[0] ^= 0xFF;
+    try std.testing.expectError(error.SignFailed, bad_header.sign("the quick brown fox"));
+    try std.testing.expectError(error.SignFailed, bad_header.signWithContext("the quick brown fox", ""));
+
+    // The unchanged key still signs, so the failure comes from the key bytes.
+    var good = try kp.secret_key.signWithContext("the quick brown fox", "");
+    defer good.deinit();
+    try std.testing.expect(try kp.public_key.isValidSignature("the quick brown fox", good.bytes));
+}
