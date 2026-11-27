@@ -107,9 +107,30 @@ The rules follow liboqs:
 
 Stateful signatures (XMSS, XMSS^MT and LMS) have no context strings in liboqs, so they have none here.
 
+## Seeded key generation
+
+ML-KEM-512, ML-KEM-768 and ML-KEM-1024 can make a key pair and an encapsulation from a seed, so the same seed always gives the same output. The calls go through `OQS_KEM_keypair_derand` and `OQS_KEM_encaps_derand`. The key pair seed is 64 bytes and the encapsulation seed is 32 bytes.
+
+```zig
+const key_seed: [64]u8 = ...; // from your own secure source
+var kp = try oqs.kem.MlKem768.generateKeyPairFromSeed(allocator, &key_seed);
+defer kp.public_key.deinit();
+defer kp.secret_key.deinit();
+const message_seed: [32]u8 = ...;
+var enc = try kp.public_key.encapsulateWithSeed(&message_seed);
+defer enc.deinit();
+```
+
+The runtime core has `oqs.Kem.keypairFromSeed` and `oqs.Kem.encapsFromSeed`. `oqs.Kem.lengthKeyPairSeed` and `oqs.Kem.lengthEncapsulationSeed` report the seed lengths liboqs gives, and `oqs.Registry.kemDescription(name).?.keyPairSeedLength` gives the same by name.
+
+- A seed is secret. Anyone with a key pair seed can rebuild the secret key. Keep it as private as the key, and wipe it yourself when done, for example with `std.crypto.secureZero`. The wrapper keeps no copy.
+- Every other key encapsulation mechanism has a seed length of 0 in liboqs, so both seeded calls return `error.SeedNotSupported`. liboqs has no seeded signature key generation, so there is none here.
+- Checks run before liboqs is called, in this order: seed support, then the seed length, then for encapsulation the public key length. A wrong length returns `error.InvalidKeySize`.
+- The seeded calls return the same key and ciphertext types as the random ones, and decapsulation is the usual one.
+
 ## Errors
 
-Every operation returns `oqs.OqsError`. `oqs.describeError(err)` gives a short plain text for each member. `SeedNotSupported` and `PersistenceFailed` are part of the set, but nothing returns them yet. Zig errors carry no payload, so `InvalidKeySize` does not say which length was expected.
+Every operation returns `oqs.OqsError`. `oqs.describeError(err)` gives a short plain text for each member. `PersistenceFailed` is part of the set, but nothing returns it yet. Zig errors carry no payload, so `InvalidKeySize` does not say which length was expected.
 
 ## Stateful signatures
 
