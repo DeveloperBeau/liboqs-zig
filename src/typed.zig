@@ -195,6 +195,17 @@ pub fn Sig(comptime spec: SigInfo) type {
                 defer s.deinit();
                 return s.verify(message, signature, self.bytes);
             }
+
+            /// True iff `signature` is valid for `message` under `context` and this key.
+            ///
+            /// It gives what `oqs.Sig.verifyWithContext` gives. An empty
+            /// context matches `isValidSignature`. A context the algorithm
+            /// cannot take, or one over 255 bytes, gives false.
+            pub fn isValidSignatureWithContext(self: PublicKey, message: []const u8, signature: []const u8, context: []const u8) OqsError!bool {
+                var s = try core_sig.init(self.allocator, spec.name);
+                defer s.deinit();
+                return s.verifyWithContext(message, signature, context, self.bytes);
+            }
         };
 
         /// Signing (secret) key for this algorithm. Zeroed on `deinit`.
@@ -219,6 +230,20 @@ pub fn Sig(comptime spec: SigInfo) type {
                 var s = try core_sig.init(self.allocator, spec.name);
                 defer s.deinit();
                 const bytes = try s.sign(message, self.bytes);
+                return .{ .allocator = self.allocator, .bytes = bytes };
+            }
+
+            /// Sign `message` under the context string `context`. Caller owns
+            /// the returned signature, allocated with the key's allocator.
+            ///
+            /// It returns what `oqs.Sig.signWithContext` returns. An algorithm
+            /// without context support signs only with an empty context and
+            /// returns `ContextNotSupported` for any other. A context over 255
+            /// bytes returns `ContextTooLong`.
+            pub fn signWithContext(self: SecretKey, message: []const u8, context: []const u8) OqsError!Signature {
+                var s = try core_sig.init(self.allocator, spec.name);
+                defer s.deinit();
+                const bytes = try s.signWithContext(message, context, self.bytes);
                 return .{ .allocator = self.allocator, .bytes = bytes };
             }
         };
