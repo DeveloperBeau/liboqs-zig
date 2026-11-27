@@ -612,8 +612,11 @@ pub fn build(b: *std.Build) void {
     // Known-answer gate: the Zig wrapper against the digests in the liboqs
     // kats.json files. Built in the chosen optimize mode like cref and zref,
     // and sharded by tools/kat.sh because the liboqs random source is global.
-    // Do not default it to ReleaseFast: liboqs SNOVA_25_8_3 built that way
-    // gives different output from run to run, even through the raw C program.
+    // Do not default it to ReleaseFast: SNOVA_25_8_3 gives a stable wrong
+    // known-answer digest when the liboqs C is built that way for an AVX-512
+    // native target, from a miscompile in LLVM 22 x86 instruction selection
+    // (the C compiler bundled with zig 0.17.1). The same wrong digest shows
+    // up through the C built by zig.
     // ------------------------------------------------------------------
     const kat_exe_harness_mod = addKatHarness(b, target, optimize, oqs_mod, oqs_include);
     const kat_exe_mod = b.createModule(.{
