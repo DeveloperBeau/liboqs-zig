@@ -47,27 +47,22 @@ fn flipPositions(random: std.Random, bit_len: usize) [flip_count]usize {
 
 // --- Hand-written family tables ------------------------------------------
 
-/// What a KEM does with a ciphertext of the right length that it did not make.
-pub const Rejection = enum {
-    /// Decapsulation succeeds and gives a secret that is not the encapsulated one.
-    implicit,
-};
+const KemFamily = struct { prefix: []const u8, count: usize };
 
-const KemFamily = struct { prefix: []const u8, rejection: Rejection, count: usize };
-
+// Each family implements the FO transform with implicit rejection: decaps of
+// every one returns success for a ciphertext of the right length, and gives a
+// secret that is not the encapsulated one. The count is how many enabled KEMs
+// the family has.
 const kem_family_rejection = [_]KemFamily{
-    // Each family implements the FO transform with implicit rejection. The
-    // decaps of every one returns success for a ciphertext of the right
-    // length. The count is how many enabled KEMs the family has.
-    .{ .prefix = "BIKE-", .rejection = .implicit, .count = 3 },
-    .{ .prefix = "Classic-McEliece-", .rejection = .implicit, .count = 10 },
-    .{ .prefix = "FrodoKEM-", .rejection = .implicit, .count = 6 },
-    .{ .prefix = "eFrodoKEM-", .rejection = .implicit, .count = 6 },
-    .{ .prefix = "HQC-", .rejection = .implicit, .count = 3 },
-    .{ .prefix = "Kyber", .rejection = .implicit, .count = 3 },
-    .{ .prefix = "ML-KEM-", .rejection = .implicit, .count = 3 },
-    .{ .prefix = "NTRU-", .rejection = .implicit, .count = 6 },
-    .{ .prefix = "sntrup", .rejection = .implicit, .count = 1 },
+    .{ .prefix = "BIKE-", .count = 3 },
+    .{ .prefix = "Classic-McEliece-", .count = 10 },
+    .{ .prefix = "FrodoKEM-", .count = 6 },
+    .{ .prefix = "eFrodoKEM-", .count = 6 },
+    .{ .prefix = "HQC-", .count = 3 },
+    .{ .prefix = "Kyber", .count = 3 },
+    .{ .prefix = "ML-KEM-", .count = 3 },
+    .{ .prefix = "NTRU-", .count = 6 },
+    .{ .prefix = "sntrup", .count = 1 },
 };
 
 /// How many enabled KEMs each family has, as the table above lists them. The
@@ -76,12 +71,13 @@ pub fn kemFamilyCounts() []const KemFamily {
     return &kem_family_rejection;
 }
 
-/// The rejection rule of the KEM family `name` belongs to, or null for a name no family claims.
-pub fn rejectionOf(name: []const u8) ?Rejection {
+/// True when `name` starts with a KEM family prefix in the table, so a family
+/// with implicit rejection claims it. False for a name no family claims.
+pub fn rejectionOf(name: []const u8) bool {
     for (kem_family_rejection) |family| {
-        if (std.mem.startsWith(u8, name, family.prefix)) return family.rejection;
+        if (std.mem.startsWith(u8, name, family.prefix)) return true;
     }
-    return null;
+    return false;
 }
 
 const SigFamily = struct { prefix: []const u8, suf_cma: bool, count: usize };
@@ -157,7 +153,7 @@ pub fn checkKem(allocator: std.mem.Allocator, name: [:0]const u8, random: std.Ra
 /// the family rules. The caller keeps `kem` and frees it.
 pub fn checkKemWith(name: []const u8, kem: oqs.Kem, random: std.Random) !void {
     const allocator = kem.allocator;
-    try require(name, "no rejection rule is written for this KEM family", rejectionOf(name) != null);
+    try require(name, "no rejection rule is written for this KEM family", rejectionOf(name));
 
     var pair = try KemPair.init(kem);
     defer pair.deinit();

@@ -69,8 +69,8 @@ test "every sample algorithm is enabled" {
 }
 
 test "the family tables name no family for a made-up algorithm" {
-    try std.testing.expect(checks.rejectionOf("ML-KEM-512") != null);
-    try std.testing.expect(checks.rejectionOf("Made-Up-KEM") == null);
+    try std.testing.expect(checks.rejectionOf("ML-KEM-512"));
+    try std.testing.expect(!checks.rejectionOf("Made-Up-KEM"));
     try std.testing.expectEqual(@as(?bool, true), checks.claimsSufCma("ML-DSA-65"));
     try std.testing.expectEqual(@as(?bool, false), checks.claimsSufCma("Falcon-1024"));
     try std.testing.expectEqual(@as(?bool, null), checks.claimsSufCma("Made-Up-Sig"));
