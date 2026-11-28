@@ -6,11 +6,11 @@
 # slowest shard. Per-algorithm progress streams on stderr (inherited from the
 # shards) so a long run visibly advances. The stateful pair (stfl_cref|stfl_zref)
 # uses the same split. OQS_SHARDS overrides the shard count.
-# Usage: run-shards.sh <cref|zref|stfl_cref|stfl_zref>
+# Usage: run-shards.sh <cref|zref|stfl_cref|stfl_zref|behaviour>
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 bin="${1:-}"
-case "$bin" in cref | zref | stfl_cref | stfl_zref) ;; *) echo "usage: run-shards.sh <cref|zref|stfl_cref|stfl_zref>" >&2; exit 2 ;; esac
+case "$bin" in cref | zref | stfl_cref | stfl_zref | behaviour) ;; *) echo "usage: run-shards.sh <cref|zref|stfl_cref|stfl_zref|behaviour>" >&2; exit 2 ;; esac
 N="${OQS_SHARDS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
