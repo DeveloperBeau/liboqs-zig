@@ -176,6 +176,7 @@ zig build test         # unit, smoke, typed-API, registry, context string, funct
 zig build behaviour    # every KEM and signature: correctness, rejection of bad input, a short fuzz pass
 zig build parity       # every algorithm: C reference vs Zig wrapper, byte-identical
 zig build snapshot     # wrapper output vs the frozen liboqs reference digests
+zig build kat          # known-answer digests of liboqs kats.json, through the wrapper
 ```
 
 `zig build behaviour` runs the behaviour checks and one fuzz round on every enabled KEM and stateless signature scheme, through `oqs.Kem` and `oqs.Sig`. For a KEM it checks that keypair, encaps and decaps agree, that a changed or random ciphertext never gives the encapsulated secret, and that a ciphertext, public key or secret key of the wrong length gives `error.InvalidKeySize`. For a signature scheme it checks that sign and verify agree, that flipped message bits never verify, that flipped signature bits never verify for the schemes that claim SUF-CMA (ML-DSA), that another key never verifies, and that all-zero, all-one and random signatures of many lengths never verify. The harness is sharded like parity and built in the optimize mode you pass, Debug by default. It prints `BEHAVIOUR OK: 41 KEMs and 221 signatures` and fails when the algorithms that ran differ from the registry. A Debug run takes about 19 minutes with 4 shards. `OQS_SHARDS` sets the shard count and `OQS_BEHAVIOUR_SEED` the seed. The step is not part of CI.
@@ -187,6 +188,16 @@ The stateful fuzz test signs several seeded messages per family, then checks tha
 `parity` also checks the stateful signature families (XMSS, XMSS^MT and LMS) through the typed `oqs.sig_stfl` API against the raw C API, after the main compare. For each algorithm it does one keygen and one sign under the shared seed and message, and compares the public key, the signature and the signature counts. This check is separate from the frozen snapshot, which has no stateful lines. By default only parameter sets with a total tree height of 16 or less run, which is 29 of the 70, and each skipped name is printed. Set `OQS_STATEFUL_ALL=1` to run all 70. The stateful harnesses are always built in ReleaseFast.
 
 `parity` runs the full algorithm set, so it is slow (Classic McEliece keygen and SLH-DSA signing dominate). It shards across CPU cores and prints each algorithm as it goes, finishing with an OK or FAILED summary.
+
+## Known-answer tests
+
+`zig build kat` runs the liboqs programs `kat_kem` and `kat_sig` through the Zig wrapper. Key generation, encapsulation, decapsulation, signing and verification go through `oqs.Kem` and `oqs.Sig`. Only the liboqs random source is replaced by the known-answer generators of liboqs: the NIST DRBG for every algorithm except HQC, which uses its SHAKE256 generator. The harness prints the same text as the C programs, takes its SHA-256 and compares it with the `single` digest in `tests/KATs/kem/kats.json` or `tests/KATs/sig/kats.json` of the pinned liboqs. Those files are embedded from the hash-pinned dependency at build time, so they cannot drift from `LIBOQS_VERSION`.
+
+Every enabled KEM and signature scheme that has an entry is checked, and one that is missing from the run is a failure, not a skip. Run output counts the algorithms that are enabled but have no entry. With the default build that is the 156 SLH-DSA schemes, which liboqs tests with ACVP vectors instead. A mismatch prints the algorithm name with the expected and the actual digest and exits non-zero. A passing run ends with `KAT OK: 41 KEMs and 65 signatures match liboqs 0.16.0 kats.json (single)`. A run without `OQS_KAT_FILTER` must check exactly that fixed set of 41 KEMs and 65 signatures, listed in `harness/kat_names.zig`. A missing or an extra name is a failure, so dropping one algorithm from the run list cannot pass. A vendor bump must update that list.
+
+The run splits over four processes, because the liboqs random source is global. `OQS_SHARDS` sets the number. `OQS_KAT_ALL=1` compares the `all` digests (100 counts, 10 for Classic McEliece) instead. `OQS_KAT_FILTER=ML-KEM-768,ML-DSA-44` covers only the named algorithms. The harness is built in the optimize mode you choose, as `parity` is. Do not use `-Doptimize=ReleaseFast` for it yet: SNOVA_25_8_3 gives a stable wrong known-answer digest when the liboqs C is built that way for an AVX-512 native target, from a miscompile in LLVM 22 x86 instruction selection (the C compiler bundled with zig 0.17.1). The same wrong digest shows up through the C built by zig.
+
+The stateful signatures (XMSS, XMSS^MT and LMS) are not covered. `kat_sig_stfl` loads the secret key from a response file, and the typed stateful API has no secret key import. The harness code is in `harness/kat*.zig` and its tests are in `tests/kat.zig`.
 
 ## Which algorithms are built
 
@@ -207,7 +218,7 @@ echo <new-version> > LIBOQS_VERSION
 zig fetch --save=liboqs https://github.com/open-quantum-safe/liboqs/archive/refs/tags/<new-version>.tar.gz
 bash tools/gen-manifest.sh        # regenerate manifest, oqsconfig.h, algorithms.zig
 bash tools/freeze-snapshots.sh    # regenerate tests/snapshots/<new-version>.txt
-zig build && zig build test && zig build parity && zig build snapshot
+zig build && zig build test && zig build parity && zig build snapshot && zig build kat
 ```
 
 The reference snapshot is frozen on macOS (arm64). Parity is self-consistent on any platform; the snapshot is a drift tripwire on that one reference platform, so CI runs it only there.

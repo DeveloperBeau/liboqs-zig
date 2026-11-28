@@ -236,6 +236,37 @@ fn buildCliboqs(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
     return .{ .lib = cliboqs, .include = oqs_include };
 }
 
+/// The known-answer harness module. It embeds the `kats.json` files of the
+/// hash-pinned liboqs dependency, so the expected digests cannot drift from
+/// `LIBOQS_VERSION`.
+fn addKatHarness(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    oqs_mod: *std.Build.Module,
+    oqs_include: std.Build.LazyPath,
+) *std.Build.Module {
+    const liboqs = b.dependency("liboqs", .{});
+    // The harness calls the random source and the SHAKE256 state directly,
+    // which src/c.h does not expose, so it translates its own header.
+    const translate_c = b.addTranslateC(.{
+        .root_source_file = b.path("harness/kat_c.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    translate_c.addIncludePath(oqs_include);
+    const mod = b.createModule(.{
+        .root_source_file = b.path("harness/kat_harness.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    mod.addImport("oqs", oqs_mod);
+    mod.addImport("c_api", translate_c.createModule());
+    mod.addAnonymousImport("kem_kats_json", .{ .root_source_file = liboqs.path("tests/KATs/kem/kats.json") });
+    mod.addAnonymousImport("sig_kats_json", .{ .root_source_file = liboqs.path("tests/KATs/sig/kats.json") });
+    return mod;
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -483,6 +514,24 @@ pub fn build(b: *std.Build) void {
     run_kem_seed_tests.setName(b.fmt("run kem_seed tests (fuzz seed 0x{x})", .{fuzz_seed}));
     test_step.dependOn(&run_kem_seed_tests.step);
 
+    // Known-answer harness tests: text, layouts, generators, the digest reader
+    // and the report. They seed the KAT RNG, so they get their own binary.
+    const kat_options = b.addOptions();
+    kat_options.addOption(u64, "fuzz_seed", fuzz_seed);
+    const kat_harness_mod = addKatHarness(b, target, optimize, oqs_mod, oqs_include);
+    const kat_tests_mod = b.createModule(.{
+        .root_source_file = b.path("tests/kat.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    kat_tests_mod.addImport("oqs", oqs_mod);
+    kat_tests_mod.addImport("kat_harness", kat_harness_mod);
+    kat_tests_mod.addOptions("build_options", kat_options);
+    const kat_tests = b.addTest(.{ .root_module = kat_tests_mod });
+    const run_kat_tests = b.addRunArtifact(kat_tests);
+    run_kat_tests.setName(b.fmt("run kat tests (fuzz seed 0x{x})", .{fuzz_seed}));
+    test_step.dependOn(&run_kat_tests.step);
+
     // ------------------------------------------------------------------
     // C reference harness: cref
     // ------------------------------------------------------------------
@@ -630,4 +679,31 @@ pub fn build(b: *std.Build) void {
     run_snapshot.has_side_effects = true;
     const snapshot_step = b.step("snapshot", "Check zref against the frozen liboqs reference snapshot");
     snapshot_step.dependOn(&run_snapshot.step);
+
+    // ------------------------------------------------------------------
+    // Known-answer gate: the Zig wrapper against the digests in the liboqs
+    // kats.json files. Built in the chosen optimize mode like cref and zref,
+    // and sharded by tools/kat.sh because the liboqs random source is global.
+    // Do not default it to ReleaseFast: SNOVA_25_8_3 gives a stable wrong
+    // known-answer digest when the liboqs C is built that way for an AVX-512
+    // native target, from a miscompile in LLVM 22 x86 instruction selection
+    // (the C compiler bundled with zig 0.17.1). The same wrong digest shows
+    // up through the C built by zig.
+    // ------------------------------------------------------------------
+    const kat_exe_harness_mod = addKatHarness(b, target, optimize, oqs_mod, oqs_include);
+    const kat_exe_mod = b.createModule(.{
+        .root_source_file = b.path("harness/kat.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    kat_exe_mod.addImport("oqs", oqs_mod);
+    kat_exe_mod.addImport("kat_harness", kat_exe_harness_mod);
+    const kat_exe = b.addExecutable(.{ .name = "kat", .root_module = kat_exe_mod });
+    b.installArtifact(kat_exe);
+
+    const run_kat = b.addSystemCommand(&.{ "bash", "tools/kat.sh" });
+    run_kat.step.dependOn(b.getInstallStep());
+    run_kat.has_side_effects = true;
+    const kat_step = b.step("kat", "Check the Zig wrapper against the liboqs known-answer digests");
+    kat_step.dependOn(&run_kat.step);
 }
